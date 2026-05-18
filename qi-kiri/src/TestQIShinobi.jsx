@@ -245,9 +245,8 @@ const QUESTIONS = [
   // ─── ÉPREUVE FINALE ───
   {
     section: "Épreuve Finale",
-    diff: 5,
-    pts: 12,
-    impossible: true,
+    diff: 4,
+    pts: 8,
     q: "Mizugami Hoshigaki, le « Démon de la Brume », fut sensei de Yogetsu Hōzuki, assassina le 6ᵉ Mizukage Reigetsu, et fut exécuté en secret par Nagegetsu — 7ᵉ Mizukage. Yogetsu devint plus tard le 8ᵉ Mizukage. Place ces 5 événements dans l'ordre chronologique strict : (A) Yogetsu devient 8ᵉ Mizukage · (B) Mizugami forme Yogetsu · (C) Mizugami tue Reigetsu · (D) Nagegetsu accède au titre de 7ᵉ Mizukage · (E) Nagegetsu fait exécuter Mizugami en secret.",
     choices: [
       "B → C → D → E → A",
@@ -256,6 +255,20 @@ const QUESTIONS = [
       "B → C → E → D → A",
     ],
     answer: 0,
+  },
+  {
+    section: "Paradoxe des Brumes Jumelles",
+    diff: 5,
+    pts: 20,
+    impossible: true,
+    q: "Durant une mission diplomatique secrète entre Kiri et Suna, quatre parchemins furent scellés. Exactement deux ninjas disent entièrement vrai, exactement un ment entièrement, et le dernier mélange vérité et mensonge. Le coupable du sabotage n'est ni celui qui ment totalement, ni l'un de ceux qui disent totalement vrai. Parmi Aogami et Raiden, l'un est totalement honnête et l'autre est le coupable. Aucun Hōzuki ne dit le même nombre de vérités. Aogami : « Raiden n'est pas innocent. » / « Tengetsu dit au moins une vérité. » Raiden : « Kyugetsu ment totalement. » / « Aogami est innocent. » Kyugetsu : « Le coupable est plus âgé que moi. » / « Raiden dit entièrement vrai. » Tengetsu : « Kyugetsu ment au moins une fois. » / « Je suis innocent. » Qui est le coupable ?",
+    choices: [
+      "Aogami Hoshigaki",
+      "Kyugetsu Hōzuki",
+      "Raiden Karatachi",
+      "Tengetsu Hōzuki",
+    ],
+    answer: 3,
   },
 ];
 
@@ -579,7 +592,7 @@ export default function TestQIShinobi() {
                 <strong>{QUESTIONS.length} questions</strong> sur Kirigakure : armes, clans, Genjutsu, logique. Ton QI dépend de la justesse de tes réponses et de ta vitesse.
               </p>
               <p style={{ ...styles.body, color: "#F0D060", marginTop: 10 }}>
-                ⚜ La dernière question est très difficile — la réussir donne <strong>+10 QI</strong>.
+                ⚜ La dernière question est impossible — la réussir donne <strong>+10 QI</strong> et un gros bonus de points.
               </p>
             </div>
 
@@ -879,7 +892,7 @@ export default function TestQIShinobi() {
               <div style={{ ...styles.card, background: "rgba(240,208,96,0.08)", borderColor: "rgba(240,208,96,0.35)", textAlign: "center", marginBottom: 12 }}>
                 <div style={{ fontSize: 11, letterSpacing: 3, color: "#F0D060", fontWeight: 600 }}>⚜ ÉPREUVE FINALE ⚜</div>
                 <p style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic", fontSize: 14, color: "#F0D060", margin: "8px 0 0" }}>
-                  « Une seule question. Douze points. Croise les chroniques avec ta logique. »
+                  {`« Une seule question. ${currentQ.pts} points. Croise les indices avec ta logique. »`}
                 </p>
               </div>
             )}
