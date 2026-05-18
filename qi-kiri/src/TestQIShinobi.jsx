@@ -261,7 +261,12 @@ const QUESTIONS = [
 
 const NORMAL_MAX = QUESTIONS.filter((q) => !q.impossible).reduce((s, q) => s + q.pts, 0);
 const TOTAL_MAX = QUESTIONS.reduce((s, q) => s + q.pts, 0);
-const EXPECTED_TIME = QUESTIONS.reduce((s, q) => s + q.diff * 15, 0);
+const TIME_BONUS_MAX = 15;
+const TIME_TARGET_SEC = 5 * 60;
+const TIME_CAP_110_SEC = 10 * 60;
+const TIME_FLOOR_SEC = 15 * 60;
+const TIME_PENALTY_AT_10_MIN = -45;
+const TIME_PENALTY_MIN = -70;
 
 const RANKS = [
   { label: "X", min: 145, color: "#F0D060", bg: "rgba(240,208,96,0.12)", border: "#F0D060", desc: "Conscience au-delà du classement", flavor: "« La Brume t'a reconnu comme l'une des siennes. »" },
@@ -280,14 +285,31 @@ function getRank(qi) {
   return RANKS.find((r) => qi >= r.min) || RANKS[RANKS.length - 1];
 }
 
+function computeTimeAdjustment(elapsedSec) {
+  if (elapsedSec <= TIME_TARGET_SEC) {
+    const ratio = elapsedSec / TIME_TARGET_SEC;
+    return Math.round(TIME_BONUS_MAX * (1 - ratio));
+  }
+
+  if (elapsedSec <= TIME_CAP_110_SEC) {
+    const ratio = (elapsedSec - TIME_TARGET_SEC) / (TIME_CAP_110_SEC - TIME_TARGET_SEC);
+    return Math.round(TIME_PENALTY_AT_10_MIN * ratio);
+  }
+
+  if (elapsedSec <= TIME_FLOOR_SEC) {
+    const ratio = (elapsedSec - TIME_CAP_110_SEC) / (TIME_FLOOR_SEC - TIME_CAP_110_SEC);
+    return Math.round(
+      TIME_PENALTY_AT_10_MIN + (TIME_PENALTY_MIN - TIME_PENALTY_AT_10_MIN) * ratio
+    );
+  }
+
+  return TIME_PENALTY_MIN;
+}
+
 function computeQI(score, elapsedSec, bonusEarned) {
   const baseRatio = Math.min(1, score / NORMAL_MAX);
   const base = 70 + baseRatio * 75;
-  let timeBonus = 0;
-  const ratio = elapsedSec / EXPECTED_TIME;
-  if (ratio < 1) timeBonus = Math.min(15, (1 - ratio) * 25);
-  else if (ratio > 2) timeBonus = -Math.min(10, (ratio - 2) * 5);
-  timeBonus *= 0.3 + baseRatio * 0.7;
+  const timeBonus = computeTimeAdjustment(elapsedSec);
   const secretBonus = bonusEarned ? 10 : 0;
   return Math.max(60, Math.min(180, Math.round(base + timeBonus + secretBonus)));
 }
@@ -584,7 +606,7 @@ export default function TestQIShinobi() {
             <div style={styles.statGrid}>
               <Stat label="Questions" value={QUESTIONS.length} />
               <Stat label="Points max" value={TOTAL_MAX} />
-              <Stat label="Temps attendu" value={`~${Math.round(EXPECTED_TIME / 60)} min`} />
+              <Stat label="Temps cible" value={`~${Math.round(TIME_TARGET_SEC / 60)} min`} />
               <Stat label="Rangs" value="D → X" />
             </div>
 
