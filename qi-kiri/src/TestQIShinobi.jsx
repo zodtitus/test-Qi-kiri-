@@ -273,7 +273,11 @@ const QUESTIONS = [
 ];
 
 const NORMAL_MAX = QUESTIONS.filter((q) => !q.impossible).reduce((s, q) => s + q.pts, 0);
+const NORMAL_QUESTION_COUNT = QUESTIONS.filter((q) => !q.impossible).length;
 const TOTAL_MAX = QUESTIONS.reduce((s, q) => s + q.pts, 0);
+const IMPOSSIBLE_INDEX = QUESTIONS.findIndex((q) => q.impossible);
+const IMPOSSIBLE_QUESTION = IMPOSSIBLE_INDEX >= 0 ? QUESTIONS[IMPOSSIBLE_INDEX] : null;
+const IMPOSSIBLE_QI_BONUS = 10;
 const TIME_BONUS_MAX = 25;
 const TIME_ELITE_SEC = 3 * 60;
 const TIME_TARGET_SEC = 4 * 60;
@@ -324,11 +328,50 @@ function computeTimeAdjustment(elapsedSec) {
   return TIME_PENALTY_MIN;
 }
 
+function evaluateAnswers(answerList) {
+  const answersSnapshot = QUESTIONS.map((_, index) => {
+    const value = answerList?.[index];
+    return Number.isFinite(value) ? value : -1;
+  });
+
+  let normalScore = 0;
+  let totalScore = 0;
+  let correctAnswers = 0;
+  let normalCorrectAnswers = 0;
+
+  QUESTIONS.forEach((question, index) => {
+    if (answersSnapshot[index] !== question.answer) {
+      return;
+    }
+
+    correctAnswers += 1;
+    totalScore += question.pts;
+
+    if (!question.impossible) {
+      normalScore += question.pts;
+      normalCorrectAnswers += 1;
+    }
+  });
+
+  const bonusEarned =
+    IMPOSSIBLE_INDEX >= 0 &&
+    answersSnapshot[IMPOSSIBLE_INDEX] === QUESTIONS[IMPOSSIBLE_INDEX].answer;
+
+  return {
+    answersSnapshot,
+    normalScore,
+    totalScore,
+    correctAnswers,
+    normalCorrectAnswers,
+    bonusEarned,
+  };
+}
+
 function computeQI(score, elapsedSec, bonusEarned) {
   const baseRatio = Math.min(1, score / NORMAL_MAX);
   const base = 70 + baseRatio * 75;
   const timeBonus = computeTimeAdjustment(elapsedSec);
-  const secretBonus = bonusEarned ? 10 : 0;
+  const secretBonus = bonusEarned ? IMPOSSIBLE_QI_BONUS : 0;
   return Math.max(60, Math.min(180, Math.round(base + timeBonus + secretBonus)));
 }
 
@@ -443,12 +486,8 @@ export default function TestQIShinobi() {
 
     try {
       const totalSec = Math.round((finalEnd - startTime) / 1000);
-      const normalScore = QUESTIONS.reduce(
-        (s, q, i) => (!q.impossible && answers[i] === q.answer ? s + q.pts : s),
-        0
-      );
-      const bonusEarned = answers[QUESTIONS.length - 1] === QUESTIONS[QUESTIONS.length - 1].answer;
-      const qi = computeQI(normalScore, totalSec, bonusEarned);
+      const evaluation = evaluateAnswers(answers);
+      const qi = computeQI(evaluation.normalScore, totalSec, evaluation.bonusEarned);
       const rank = getRank(qi);
       const entryId = Date.now() + "_" + Math.random().toString(36).slice(2, 8);
       const entry = {
@@ -456,11 +495,14 @@ export default function TestQIShinobi() {
         name: name.trim().slice(0, 24),
         qi,
         rank: rank.label,
-        score: normalScore + (bonusEarned ? QUESTIONS[QUESTIONS.length - 1].pts : 0),
+        score: evaluation.totalScore,
+        normalScore: evaluation.normalScore,
+        correctAnswers: evaluation.correctAnswers,
+        normalCorrectAnswers: evaluation.normalCorrectAnswers,
         time: totalSec,
-        bonus: bonusEarned,
+        bonus: evaluation.bonusEarned,
         date: new Date().toISOString(),
-        answers: [...answers], // sauvegarde détaillée pour l'admin
+        answers: evaluation.answersSnapshot, // sauvegarde détaillée pour l'admin
       };
 
       const result = await submitLeaderboardEntry(entry);
@@ -556,12 +598,10 @@ export default function TestQIShinobi() {
     }
   };
 
-  const normalScore = QUESTIONS.reduce(
-    (s, q, i) => (!q.impossible && answers[i] === q.answer ? s + q.pts : s),
-    0
-  );
-  const bonusEarned = answers[QUESTIONS.length - 1] === QUESTIONS[QUESTIONS.length - 1].answer;
-  const totalScore = normalScore + (bonusEarned ? QUESTIONS[QUESTIONS.length - 1].pts : 0);
+  const currentEvaluation = evaluateAnswers(answers);
+  const normalScore = currentEvaluation.normalScore;
+  const bonusEarned = currentEvaluation.bonusEarned;
+  const totalScore = currentEvaluation.totalScore;
   const totalSec = Math.round((endTime - startTime) / 1000);
   const qi = screen === "results" ? computeQI(normalScore, totalSec, bonusEarned) : 0;
   const rank = screen === "results" ? getRank(qi) : null;
@@ -760,7 +800,14 @@ export default function TestQIShinobi() {
                   {leaderboard.map((e, i) => {
                     const r = RANKS.find((x) => x.label === e.rank) || RANKS[RANKS.length - 1];
                     const isExpanded = expandedRow === e.id;
-                    const correctCount = (e.answers || []).filter((a, qi) => a === QUESTIONS[qi].answer).length;
+                    const correctCount =
+                      typeof e.correctAnswers === "number"
+                        ? e.correctAnswers
+                        : evaluateAnswers(e.answers).correctAnswers;
+                    const normalCorrectCount =
+                      typeof e.normalCorrectAnswers === "number"
+                        ? e.normalCorrectAnswers
+                        : evaluateAnswers(e.answers).normalCorrectAnswers;
                     return (
                       <div key={e.id} style={{ borderBottom: "1px solid rgba(232,216,184,0.08)" }}>
                         <div
@@ -801,6 +848,8 @@ export default function TestQIShinobi() {
                           <div style={{ padding: "16px 12px 20px", background: "rgba(0,0,0,0.15)", borderRadius: 6, marginTop: 4, marginBottom: 8 }}>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginBottom: 16, fontSize: 12 }}>
                               <DetailItem label="Score" value={`${e.score}/${TOTAL_MAX}`} />
+                              <DetailItem label="Bonnes réponses" value={`${correctCount}/${QUESTIONS.length}`} />
+                              <DetailItem label="Classiques" value={`${normalCorrectCount}/${NORMAL_QUESTION_COUNT}`} />
                               <DetailItem label="Temps" value={formatTime(e.time)} />
                               <DetailItem label="Précision" value={`${Math.round((e.score / TOTAL_MAX) * 100)}%`} />
                               <DetailItem label="Bonus" value={e.bonus ? "✓ Oui" : "✗ Non"} color={e.bonus ? "#F0D060" : "#8090A0"} />
@@ -1000,6 +1049,7 @@ export default function TestQIShinobi() {
 
             <div style={styles.statGrid}>
               <Stat label="Score" value={`${totalScore}/${TOTAL_MAX}`} />
+              <Stat label="Bonnes réponses" value={`${currentEvaluation.correctAnswers}/${QUESTIONS.length}`} />
               <Stat label="Temps" value={formatTime(totalSec)} />
               <Stat label="Précision" value={`${Math.round((totalScore / TOTAL_MAX) * 100)}%`} />
             </div>
