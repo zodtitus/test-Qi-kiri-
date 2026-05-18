@@ -1,4 +1,15 @@
 import { useState, useEffect } from "react";
+import {
+  LOCAL_LEADERBOARD_KEY,
+  clearLocalLeaderboard,
+  clearRemoteLeaderboard,
+  deleteLocalEntry,
+  deleteRemoteLeaderboardEntry,
+  fetchAdminLeaderboard,
+  fetchLeaderboard,
+  loadLocalLeaderboard,
+  submitLeaderboardEntry,
+} from "./leaderboardClient.js";
 
 /**
  * L'Épreuve du Mizukage — Test de QI shinobi (Kirigakure)
@@ -10,9 +21,7 @@ import { useState, useEffect } from "react";
  * │  MOT DE PASSE ADMIN — À MODIFIER    │
  * └─────────────────────────────────────┘
  */
-const ADMIN_PASSWORD = "inkuze"; // ← Change ce mot de passe pour sécuriser ton accès admin
-
-const LB_KEY = "kiri-qi-leaderboard";
+const ADMIN_PASSWORD = "inkuze"; // ← Mot de passe de secours pour le mode local
 
 const QUESTIONS = [
   // ─── FONDATIONS ───
@@ -283,28 +292,6 @@ function computeQI(score, elapsedSec, bonusEarned) {
   return Math.max(60, Math.min(180, Math.round(base + timeBonus + secretBonus)));
 }
 
-function loadLeaderboard() {
-  try {
-    const raw = localStorage.getItem(LB_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveToLeaderboard(entry) {
-  try {
-    const lb = loadLeaderboard();
-    lb.push(entry);
-    lb.sort((a, b) => b.qi - a.qi);
-    const trimmed = lb.slice(0, 100);
-    localStorage.setItem(LB_KEY, JSON.stringify(trimmed));
-    return trimmed;
-  } catch {
-    return [entry];
-  }
-}
-
 function exportCSV(entries) {
   const headers = ["Rang_classement", "Nom", "QI", "Rang", "Score", "Temps_secondes", "Bonus_resolu", "Date", ...QUESTIONS.map((_, i) => `Q${i + 1}_correct`)];
   const rows = entries.map((e, i) => [
@@ -338,11 +325,47 @@ export default function TestQIShinobi() {
   const [startTime, setStartTime] = useState(0);
   const [endTime, setEndTime] = useState(0);
   const [elapsed, setElapsed] = useState(0);
-  const [leaderboard, setLeaderboard] = useState(() => loadLeaderboard());
+  const [leaderboard, setLeaderboard] = useState([]);
   const [currentEntryId, setCurrentEntryId] = useState(null);
   const [adminPwd, setAdminPwd] = useState("");
+  const [adminSessionPassword, setAdminSessionPassword] = useState("");
   const [adminError, setAdminError] = useState(false);
   const [expandedRow, setExpandedRow] = useState(null);
+  const [syncMode, setSyncMode] = useState("loading");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function refreshLeaderboard() {
+    const result = await fetchLeaderboard();
+    setLeaderboard(result.entries);
+    setSyncMode(result.mode);
+  }
+
+  useEffect(() => {
+    refreshLeaderboard();
+  }, []);
+
+  useEffect(() => {
+    if (screen === "admin") return;
+
+    const poll = setInterval(() => {
+      refreshLeaderboard();
+    }, 4000);
+
+    return () => clearInterval(poll);
+  }, [screen]);
+
+  useEffect(() => {
+    if (syncMode !== "local") return;
+
+    const handleStorage = (event) => {
+      if (!event.key || event.key === LOCAL_LEADERBOARD_KEY) {
+        setLeaderboard(loadLocalLeaderboard());
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [syncMode]);
 
   useEffect(() => {
     if (screen !== "test") return;
@@ -355,6 +378,7 @@ export default function TestQIShinobi() {
     setAnswers(new Array(QUESTIONS.length).fill(-1));
     setIdx(0);
     setStartTime(Date.now());
+    setEndTime(0);
     setElapsed(0);
     setScreen("test");
   };
@@ -365,11 +389,19 @@ export default function TestQIShinobi() {
     setAnswers(next);
   };
 
-  const handleNext = () => {
-    if (idx < QUESTIONS.length - 1) setIdx(idx + 1);
-    else {
-      const finalEnd = Date.now();
-      setEndTime(finalEnd);
+  const handleNext = async () => {
+    if (idx < QUESTIONS.length - 1) {
+      setIdx(idx + 1);
+      return;
+    }
+
+    if (isSubmitting) return;
+
+    const finalEnd = Date.now();
+    setEndTime(finalEnd);
+    setIsSubmitting(true);
+
+    try {
       const totalSec = Math.round((finalEnd - startTime) / 1000);
       const normalScore = QUESTIONS.reduce(
         (s, q, i) => (!q.impossible && answers[i] === q.answer ? s + q.pts : s),
@@ -390,10 +422,14 @@ export default function TestQIShinobi() {
         date: new Date().toISOString(),
         answers: [...answers], // sauvegarde détaillée pour l'admin
       };
-      const updated = saveToLeaderboard(entry);
-      setLeaderboard(updated);
+
+      const result = await submitLeaderboardEntry(entry);
+      setLeaderboard(result.entries);
+      setSyncMode(result.mode);
       setCurrentEntryId(entryId);
       setScreen("results");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -404,9 +440,35 @@ export default function TestQIShinobi() {
     setIdx(0);
     setName("");
     setCurrentEntryId(null);
+    refreshLeaderboard();
   };
 
-  const handleAdminLogin = () => {
+  const handleExitAdmin = () => {
+    setScreen("intro");
+    setExpandedRow(null);
+    setAdminPwd("");
+    setAdminError(false);
+    setAdminSessionPassword("");
+    refreshLeaderboard();
+  };
+
+  const handleAdminLogin = async () => {
+    if (syncMode === "shared") {
+      try {
+        const result = await fetchAdminLeaderboard(adminPwd);
+        setLeaderboard(result.entries);
+        setSyncMode(result.mode);
+        setAdminSessionPassword(adminPwd);
+        setAdminError(false);
+        setAdminPwd("");
+        setExpandedRow(null);
+        setScreen("admin");
+      } catch {
+        setAdminError(true);
+      }
+      return;
+    }
+
     if (adminPwd === ADMIN_PASSWORD) {
       setAdminError(false);
       setAdminPwd("");
@@ -416,18 +478,39 @@ export default function TestQIShinobi() {
     }
   };
 
-  const handleClearLeaderboard = () => {
+  const handleClearLeaderboard = async () => {
     if (confirm("Effacer DÉFINITIVEMENT le tableau d'honneur ?\nCette action est irréversible.")) {
-      localStorage.removeItem(LB_KEY);
+      if (syncMode === "shared") {
+        try {
+          const result = await clearRemoteLeaderboard(adminSessionPassword);
+          setLeaderboard(result.entries);
+          setExpandedRow(null);
+        } catch {
+          setAdminError(true);
+        }
+        return;
+      }
+
+      clearLocalLeaderboard();
       setLeaderboard([]);
       setExpandedRow(null);
     }
   };
 
-  const handleDeleteEntry = (id) => {
+  const handleDeleteEntry = async (id) => {
     if (confirm("Supprimer cette entrée du tableau ?")) {
-      const updated = leaderboard.filter((e) => e.id !== id);
-      localStorage.setItem(LB_KEY, JSON.stringify(updated));
+      if (syncMode === "shared") {
+        try {
+          const result = await deleteRemoteLeaderboardEntry(id, adminSessionPassword);
+          setLeaderboard(result.entries);
+          setExpandedRow(null);
+        } catch {
+          setAdminError(true);
+        }
+        return;
+      }
+
+      const updated = deleteLocalEntry(id);
       setLeaderboard(updated);
       setExpandedRow(null);
     }
@@ -512,6 +595,7 @@ export default function TestQIShinobi() {
                   ⛩ Tableau d'Honneur de la Brume {leaderboard.length > 0 && <span style={{ color: "#8090A0", fontSize: 11 }}>({leaderboard.length})</span>}
                 </div>
               </div>
+              <SyncStatus mode={syncMode} />
               <LeaderboardTable entries={leaderboard} />
             </div>
 
@@ -560,7 +644,9 @@ export default function TestQIShinobi() {
               />
               {adminError && (
                 <div style={{ color: "#E06070", fontSize: 12, marginTop: 8 }}>
-                  Mot de passe incorrect.
+                  {syncMode === "shared"
+                    ? "Mot de passe incorrect, ou stockage partagé non configuré sur Vercel."
+                    : "Mot de passe incorrect."}
                 </div>
               )}
               <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -588,7 +674,7 @@ export default function TestQIShinobi() {
                   <div style={{ ...styles.eyebrow, color: "#F0D060" }}>MODE ADMINISTRATEUR</div>
                   <div style={{ fontSize: 18, fontWeight: 600, color: "#F0D060" }}>Détails complets · {leaderboard.length} participant{leaderboard.length > 1 ? "s" : ""}</div>
                 </div>
-                <button style={styles.btnSecondary} onClick={() => { setScreen("intro"); setExpandedRow(null); }}>
+                <button style={styles.btnSecondary} onClick={handleExitAdmin}>
                   Quitter le mode admin
                 </button>
               </div>
@@ -823,14 +909,14 @@ export default function TestQIShinobi() {
               <button
                 style={{
                   ...styles.btnPrimary,
-                  opacity: answers[idx] === -1 ? 0.45 : 1,
-                  cursor: answers[idx] === -1 ? "not-allowed" : "pointer",
+                  opacity: answers[idx] === -1 || isSubmitting ? 0.45 : 1,
+                  cursor: answers[idx] === -1 || isSubmitting ? "not-allowed" : "pointer",
                   margin: 0,
                 }}
                 onClick={handleNext}
-                disabled={answers[idx] === -1}
+                disabled={answers[idx] === -1 || isSubmitting}
               >
-                {idx === QUESTIONS.length - 1 ? "Sceller mon verdict →" : "Suivant →"}
+                {isSubmitting ? "Inscription au registre..." : idx === QUESTIONS.length - 1 ? "Sceller mon verdict →" : "Suivant →"}
               </button>
             </div>
           </div>
@@ -880,6 +966,7 @@ export default function TestQIShinobi() {
 
             <div style={styles.card}>
               <div style={styles.cardTitle}>⛩ Tableau d'Honneur de la Brume</div>
+              <SyncStatus mode={syncMode} />
               <LeaderboardTable entries={leaderboard} highlightId={currentEntryId} />
             </div>
 
@@ -898,6 +985,41 @@ function DetailItem({ label, value, color }) {
     <div>
       <div style={{ fontSize: 10, color: "#8090A0", letterSpacing: 1, textTransform: "uppercase" }}>{label}</div>
       <div style={{ fontSize: 13, fontWeight: 500, color: color || "#E8D8B8", marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+
+function SyncStatus({ mode }) {
+  const isShared = mode === "shared";
+  const color = mode === "loading" ? "#8090A0" : isShared ? "#7FD4C0" : "#F0D060";
+  const background = mode === "loading"
+    ? "rgba(128,144,160,0.08)"
+    : isShared
+      ? "rgba(127,212,192,0.08)"
+      : "rgba(240,208,96,0.08)";
+  const borderColor = mode === "loading"
+    ? "rgba(128,144,160,0.2)"
+    : isShared
+      ? "rgba(127,212,192,0.28)"
+      : "rgba(240,208,96,0.28)";
+  const text = mode === "loading"
+    ? "Connexion au registre de la Brume..."
+    : isShared
+      ? "Classement partagé : les nouveaux scores se mettent à jour automatiquement pour tous."
+      : "Mode local : sans Redis branché sur Vercel, chaque navigateur garde son propre classement.";
+
+  return (
+    <div style={{
+      marginBottom: 12,
+      padding: "10px 12px",
+      borderRadius: 6,
+      background,
+      border: `1px solid ${borderColor}`,
+      color,
+      fontSize: 12,
+      lineHeight: 1.5,
+    }}>
+      {text}
     </div>
   );
 }
