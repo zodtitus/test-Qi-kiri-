@@ -1,6 +1,6 @@
 import { Redis } from "@upstash/redis";
 
-const LEADERBOARD_KEY = "kiri:leaderboard";
+const LEADERBOARD_KEY = "kiri:leaderboard:v2";
 const MAX_ENTRIES = 100;
 
 let redisClient;
