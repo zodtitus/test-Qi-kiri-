@@ -261,7 +261,8 @@ const QUESTIONS = [
 
 const NORMAL_MAX = QUESTIONS.filter((q) => !q.impossible).reduce((s, q) => s + q.pts, 0);
 const TOTAL_MAX = QUESTIONS.reduce((s, q) => s + q.pts, 0);
-const TIME_BONUS_MAX = 10;
+const TIME_BONUS_MAX = 25;
+const TIME_ELITE_SEC = 3 * 60;
 const TIME_TARGET_SEC = 4 * 60;
 const TIME_CAP_100_SEC = 10 * 60;
 const TIME_FLOOR_SEC = 15 * 60;
@@ -286,8 +287,12 @@ function getRank(qi) {
 }
 
 function computeTimeAdjustment(elapsedSec) {
+  if (elapsedSec <= TIME_ELITE_SEC) {
+    return TIME_BONUS_MAX;
+  }
+
   if (elapsedSec <= TIME_TARGET_SEC) {
-    const ratio = elapsedSec / TIME_TARGET_SEC;
+    const ratio = (elapsedSec - TIME_ELITE_SEC) / (TIME_TARGET_SEC - TIME_ELITE_SEC);
     return Math.round(TIME_BONUS_MAX * (1 - ratio));
   }
 
