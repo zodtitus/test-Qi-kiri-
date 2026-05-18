@@ -261,12 +261,12 @@ const QUESTIONS = [
 
 const NORMAL_MAX = QUESTIONS.filter((q) => !q.impossible).reduce((s, q) => s + q.pts, 0);
 const TOTAL_MAX = QUESTIONS.reduce((s, q) => s + q.pts, 0);
-const TIME_BONUS_MAX = 15;
-const TIME_TARGET_SEC = 5 * 60;
-const TIME_CAP_110_SEC = 10 * 60;
+const TIME_BONUS_MAX = 10;
+const TIME_TARGET_SEC = 4 * 60;
+const TIME_CAP_100_SEC = 10 * 60;
 const TIME_FLOOR_SEC = 15 * 60;
-const TIME_PENALTY_AT_10_MIN = -45;
-const TIME_PENALTY_MIN = -70;
+const TIME_PENALTY_AT_10_MIN = -55;
+const TIME_PENALTY_MIN = -65;
 
 const RANKS = [
   { label: "X", min: 145, color: "#F0D060", bg: "rgba(240,208,96,0.12)", border: "#F0D060", desc: "Conscience au-delà du classement", flavor: "« La Brume t'a reconnu comme l'une des siennes. »" },
@@ -291,13 +291,13 @@ function computeTimeAdjustment(elapsedSec) {
     return Math.round(TIME_BONUS_MAX * (1 - ratio));
   }
 
-  if (elapsedSec <= TIME_CAP_110_SEC) {
-    const ratio = (elapsedSec - TIME_TARGET_SEC) / (TIME_CAP_110_SEC - TIME_TARGET_SEC);
+  if (elapsedSec <= TIME_CAP_100_SEC) {
+    const ratio = (elapsedSec - TIME_TARGET_SEC) / (TIME_CAP_100_SEC - TIME_TARGET_SEC);
     return Math.round(TIME_PENALTY_AT_10_MIN * ratio);
   }
 
   if (elapsedSec <= TIME_FLOOR_SEC) {
-    const ratio = (elapsedSec - TIME_CAP_110_SEC) / (TIME_FLOOR_SEC - TIME_CAP_110_SEC);
+    const ratio = (elapsedSec - TIME_CAP_100_SEC) / (TIME_FLOOR_SEC - TIME_CAP_100_SEC);
     return Math.round(
       TIME_PENALTY_AT_10_MIN + (TIME_PENALTY_MIN - TIME_PENALTY_AT_10_MIN) * ratio
     );
