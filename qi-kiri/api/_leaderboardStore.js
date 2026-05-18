@@ -1,7 +1,6 @@
 import { Redis } from "@upstash/redis";
 
 const LEADERBOARD_KEY = "kiri:leaderboard";
-const ENTRY_PREFIX = "kiri:leaderboard:entry:";
 const MAX_ENTRIES = 100;
 
 let redisClient;
@@ -33,10 +32,6 @@ function getRedis() {
   return redisClient;
 }
 
-function entryKey(id) {
-  return `${ENTRY_PREFIX}${id}`;
-}
-
 function sanitizeAnswers(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -63,56 +58,55 @@ function sanitizeEntry(rawEntry) {
   };
 }
 
-function buildSortScore(entry) {
-  const qiComponent = Math.max(0, entry.qi) * 1_000_000_000;
-  const timeComponent = Math.max(0, 999_999 - Math.max(0, entry.time)) * 1_000;
-  const timestamp = Date.parse(entry.date);
-  const freshnessComponent = Number.isFinite(timestamp) ? timestamp % 1_000 : 0;
-
-  return qiComponent + timeComponent + freshnessComponent;
-}
-
 function stripAnswers(entry) {
   const { answers, ...publicEntry } = entry;
   return publicEntry;
 }
 
-async function readEntries(ids) {
-  const redis = getRedis();
+function sortEntries(entries) {
+  return [...entries].sort((left, right) => {
+    if (right.qi !== left.qi) {
+      return right.qi - left.qi;
+    }
 
-  if (!redis || !ids.length) {
+    if (left.time !== right.time) {
+      return left.time - right.time;
+    }
+
+    return new Date(left.date).getTime() - new Date(right.date).getTime();
+  });
+}
+
+function normalizeLeaderboard(rawValue) {
+  if (!rawValue) {
     return [];
   }
 
-  const payloads = await Promise.all(ids.map((id) => redis.get(entryKey(id))));
-
-  return payloads
-    .map((payload) => {
-      if (typeof payload !== "string") {
-        return null;
-      }
-
-      try {
-        return sanitizeEntry(JSON.parse(payload));
-      } catch {
-        return null;
-      }
-    })
-    .filter(Boolean);
-}
-
-async function trimLeaderboard(redis) {
-  const count = await redis.zcard(LEADERBOARD_KEY);
-
-  if (count <= MAX_ENTRIES) {
-    return;
+  if (Array.isArray(rawValue)) {
+    return sortEntries(rawValue.map(sanitizeEntry)).slice(0, MAX_ENTRIES);
   }
 
-  const removeCount = count - MAX_ENTRIES;
-  const idsToRemove = await redis.zrange(LEADERBOARD_KEY, 0, removeCount - 1);
+  if (typeof rawValue === "string") {
+    try {
+      const parsed = JSON.parse(rawValue);
+      return Array.isArray(parsed) ? sortEntries(parsed.map(sanitizeEntry)).slice(0, MAX_ENTRIES) : [];
+    } catch {
+      return [];
+    }
+  }
 
-  await Promise.all(idsToRemove.map((id) => redis.del(entryKey(id))));
-  await redis.zremrangebyrank(LEADERBOARD_KEY, 0, removeCount - 1);
+  return [];
+}
+
+async function readLeaderboard(redis) {
+  const rawValue = await redis.get(LEADERBOARD_KEY);
+  return normalizeLeaderboard(rawValue);
+}
+
+async function writeLeaderboard(redis, entries) {
+  const normalized = sortEntries(entries.map(sanitizeEntry)).slice(0, MAX_ENTRIES);
+  await redis.set(LEADERBOARD_KEY, normalized);
+  return normalized;
 }
 
 export function isLeaderboardConfigured() {
@@ -130,8 +124,7 @@ export async function getPublicLeaderboard() {
     return { configured: false, entries: [] };
   }
 
-  const ids = await redis.zrange(LEADERBOARD_KEY, 0, MAX_ENTRIES - 1, { rev: true });
-  const entries = await readEntries(ids);
+  const entries = await readLeaderboard(redis);
 
   return {
     configured: true,
@@ -146,8 +139,7 @@ export async function getAdminLeaderboard() {
     return { configured: false, entries: [] };
   }
 
-  const ids = await redis.zrange(LEADERBOARD_KEY, 0, MAX_ENTRIES - 1, { rev: true });
-  const entries = await readEntries(ids);
+  const entries = await readLeaderboard(redis);
 
   return {
     configured: true,
@@ -163,20 +155,15 @@ export async function saveLeaderboardEntry(rawEntry) {
   }
 
   const entry = sanitizeEntry(rawEntry);
+  const currentEntries = await readLeaderboard(redis);
+  const nextEntries = await writeLeaderboard(redis, [entry, ...currentEntries.filter((item) => item.id !== entry.id)]);
 
-  await Promise.all([
-    redis.set(entryKey(entry.id), JSON.stringify(entry)),
-    redis.zadd(LEADERBOARD_KEY, { score: buildSortScore(entry), member: entry.id }),
-  ]);
-
-  await trimLeaderboard(redis);
-
-  const leaderboard = await getPublicLeaderboard();
+  const leaderboard = nextEntries.map(stripAnswers);
 
   return {
     configured: true,
     entry: stripAnswers(entry),
-    entries: leaderboard.entries,
+    entries: leaderboard,
   };
 }
 
@@ -187,18 +174,15 @@ export async function deleteLeaderboardEntry(id) {
     return { configured: false, entries: [] };
   }
 
-  if (id) {
-    await Promise.all([
-      redis.zrem(LEADERBOARD_KEY, id),
-      redis.del(entryKey(id)),
-    ]);
-  }
-
-  const leaderboard = await getAdminLeaderboard();
+  const currentEntries = await readLeaderboard(redis);
+  const nextEntries = await writeLeaderboard(
+    redis,
+    id ? currentEntries.filter((entry) => entry.id !== id) : currentEntries
+  );
 
   return {
     configured: true,
-    entries: leaderboard.entries,
+    entries: nextEntries,
   };
 }
 
@@ -209,9 +193,6 @@ export async function clearLeaderboard() {
     return { configured: false, entries: [] };
   }
 
-  const ids = await redis.zrange(LEADERBOARD_KEY, 0, MAX_ENTRIES - 1);
-
-  await Promise.all(ids.map((id) => redis.del(entryKey(id))));
   await redis.del(LEADERBOARD_KEY);
 
   return {
