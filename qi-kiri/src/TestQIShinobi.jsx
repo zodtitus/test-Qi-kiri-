@@ -803,7 +803,7 @@ export default function TestQIShinobi() {
                 <strong>{TEST_QUESTION_COUNT} questions tirées aléatoirement</strong> sur Kirigakure : armes, clans, Genjutsu, logique. Ton QI dépend de la justesse de tes réponses et de ta vitesse.
               </p>
               <p style={{ ...styles.body, color: "#F0D060", marginTop: 10 }}>
-                ⚜ La dernière question est impossible — la réussir donne <strong>+10 QI</strong> et un gros bonus de points.
+                ⚜ La dernière question bonus est tirée aléatoirement parmi plusieurs énigmes — la réussir donne <strong>+10 QI</strong> et un gros bonus de points.
               </p>
             </div>
 
