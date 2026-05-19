@@ -408,6 +408,73 @@ function getSecretRankVisual(secretRank, rankLabel) {
   return SECRET_HOZUKI_RANKS[secretProfile.key] || null;
 }
 
+function renderSecretRoleMark(secretRank, rankLabel) {
+  const secretProfile =
+    getSecretHozukiProfileByKey(secretRank) ||
+    getSecretHozukiProfileByLabel(rankLabel);
+
+  if (!secretProfile) {
+    return null;
+  }
+
+  const frameStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 15,
+    height: 15,
+    marginLeft: 5,
+    opacity: 0.8,
+    verticalAlign: "middle",
+    filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.28))",
+    transform: "translateY(1px)",
+  };
+
+  if (secretProfile.key === "mizukage") {
+    return (
+      <span style={frameStyle} title="Mizukage" aria-hidden="true">
+        <svg viewBox="0 0 20 20" width="15" height="15">
+          <path d="M2.4 6.2 10 1.5l7.6 4.7-2.6 2.4L10 7.1 5 8.6Z" fill="#3B44BE" stroke="#C9D5FF" strokeWidth="0.7" strokeLinejoin="round" />
+          <path d="M4.7 8.7c.2 1.8.1 4.3-.2 6.8-.2 1.6-.7 2.4-1.1 3h13.2c-.5-.6-.9-1.5-1.1-3-.3-2.4-.4-4.9-.2-6.8L10 10.6Z" fill="#F4F3F0" stroke="#D8DBE8" strokeWidth="0.7" strokeLinejoin="round" />
+          <path d="M9.8 5v5.1M7.2 7.6h5.3" stroke="#2A3198" strokeWidth="0.95" strokeLinecap="round" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (secretProfile.key === "princess") {
+    return (
+      <span style={frameStyle} title="Princesse du clan Hozuki" aria-hidden="true">
+        <svg viewBox="0 0 20 20" width="14" height="14">
+          <path d="M2.5 14.8 4.9 7.3l4 4 2.2-6 2.3 6 4-4 2.1 7.5Z" fill="none" stroke="#F4DCA0" strokeWidth="1.15" strokeLinejoin="round" />
+          <circle cx="4.9" cy="7.3" r="1.05" fill="#F7E8BC" />
+          <circle cx="11.1" cy="5.3" r="1.05" fill="#F7E8BC" />
+          <circle cx="15.1" cy="7.3" r="1.05" fill="#F7E8BC" />
+          <circle cx="17.2" cy="10.3" r="0.95" fill="#F7E8BC" />
+          <circle cx="2.8" cy="10.3" r="0.95" fill="#F7E8BC" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (secretProfile.key === "godfather") {
+    return (
+      <span style={frameStyle} title="Le Parrain" aria-hidden="true">
+        <svg viewBox="0 0 20 20" width="15" height="15">
+          <path d="M4.4 7.2c-.7-1-.8-1.8-.4-2.7M6.4 7c-.6-1.2-.6-2.1-.1-3.2" stroke="rgba(226,232,240,0.65)" strokeWidth="1" strokeLinecap="round" />
+          <g transform="rotate(-20 10 11)">
+            <rect x="4.8" y="9" width="10.2" height="3.8" rx="1.8" fill="#8E5518" stroke="#C98B4C" strokeWidth="0.7" />
+            <rect x="10.1" y="9" width="2.4" height="3.8" fill="#F0D65F" />
+            <rect x="4.8" y="9" width="1.9" height="3.8" rx="1.4" fill="#C8CDD2" />
+          </g>
+        </svg>
+      </span>
+    );
+  }
+
+  return null;
+}
+
 function getRankVisual(rankLabel, royalHozuki = false, secretRank = "") {
   const secretVisual = getSecretRankVisual(secretRank, rankLabel);
 
@@ -1212,7 +1279,10 @@ export default function TestQIShinobi() {
                             {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
                           </span>
                           <span style={{ flex: 1, color: "#E8D8B8", fontWeight: 500 }}>
-                            <span>{e.name}</span>
+                            <span style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap" }}>
+                              <span>{e.name}</span>
+                              {e.royalHozuki && secretVisual && renderSecretRoleMark(e.secretRank, e.rank)}
+                            </span>
                             {e.royalHozuki && secretVisual && (
                               <span style={{ display: "block", fontSize: 11, color: "#F8E6A0", marginTop: 2 }}>
                                 {secretVisual.label}
@@ -1605,7 +1675,10 @@ function LeaderboardTable({ entries, highlightId }) {
                 </td>
                 <td style={styles.lbTd}>
                   <span style={{ color: isMe ? "#7FD4C0" : "#E8D8B8", fontWeight: isMe ? 600 : 400 }}>
-                    <span>{e.name}</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap" }}>
+                      <span>{e.name}</span>
+                      {e.royalHozuki && secretVisual && renderSecretRoleMark(e.secretRank, e.rank)}
+                    </span>
                     {isMe && <span style={{ marginLeft: 6, fontSize: 10, color: "#7FD4C0" }}>← toi</span>}
                     {e.bonus && <span style={{ marginLeft: 6, fontSize: 11, color: "#F0D060" }}>⚜</span>}
                   </span>
