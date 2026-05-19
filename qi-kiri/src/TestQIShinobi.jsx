@@ -303,6 +303,7 @@ const TIME_PENALTY_AT_10_MIN = -35;
 const TIME_PENALTY_MIN = -50;
 const COPY_PENALTY_SECONDS = 60;
 const COPY_PENALTY_POINTS = 1;
+const SCREENSHOT_SHORTCUT_KEYS = new Set(["3", "4", "5", "s"]);
 
 const RANKS = [
   { label: "X", min: 145, color: "#F0D060", bg: "rgba(240,208,96,0.12)", border: "#F0D060", desc: "Conscience au-delà du classement", flavor: "« La Brume t'a reconnu comme l'une des siennes. »" },
@@ -354,6 +355,21 @@ function getRank(qi) {
 
 function displayChoiceLabel(value) {
   return String(value || "").replace(/^[\s✅✓]+/, "").trim();
+}
+
+function isScreenshotShortcut(event) {
+  if (!event || event.repeat) {
+    return false;
+  }
+
+  const key = String(event.key || "").toLowerCase();
+  const code = String(event.code || "").toLowerCase();
+
+  if (key === "printscreen" || code === "printscreen") {
+    return true;
+  }
+
+  return Boolean(event.metaKey && event.shiftKey && SCREENSHOT_SHORTCUT_KEYS.has(key));
 }
 
 function getSecretRankVisual(secretRank, rankLabel) {
@@ -665,18 +681,26 @@ export default function TestQIShinobi() {
       return undefined;
     }
 
-    const applyCopyPenalty = () => {
+    const applyIntegrityPenalty = () => {
       setStartTime((currentStartTime) => currentStartTime - COPY_PENALTY_SECONDS * 1000);
       setElapsed((currentElapsed) => currentElapsed + COPY_PENALTY_SECONDS);
       setCopyPenaltyCount((currentCount) => currentCount + 1);
     };
 
-    document.addEventListener("copy", applyCopyPenalty);
-    document.addEventListener("cut", applyCopyPenalty);
+    const handleScreenshotShortcut = (event) => {
+      if (isScreenshotShortcut(event)) {
+        applyIntegrityPenalty();
+      }
+    };
+
+    document.addEventListener("copy", applyIntegrityPenalty);
+    document.addEventListener("cut", applyIntegrityPenalty);
+    window.addEventListener("keydown", handleScreenshotShortcut);
 
     return () => {
-      document.removeEventListener("copy", applyCopyPenalty);
-      document.removeEventListener("cut", applyCopyPenalty);
+      document.removeEventListener("copy", applyIntegrityPenalty);
+      document.removeEventListener("cut", applyIntegrityPenalty);
+      window.removeEventListener("keydown", handleScreenshotShortcut);
     };
   }, [screen]);
 
