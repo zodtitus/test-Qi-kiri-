@@ -47,6 +47,7 @@ function normalizeEntry(rawEntry) {
     royalHozuki: Boolean(rawEntry?.royalHozuki) || Boolean(secretProfile),
     secretRank: String(rawEntry?.secretRank || secretProfile?.key || ""),
     date: typeof rawEntry?.date === "string" ? rawEntry.date : new Date().toISOString(),
+    questionIds: Array.isArray(rawEntry?.questionIds) ? rawEntry.questionIds.map((id) => String(id)) : [],
     answers: Array.isArray(rawEntry?.answers) ? rawEntry.answers : [],
   };
 }

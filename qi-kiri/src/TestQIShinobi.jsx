@@ -15,6 +15,13 @@ import {
   getSecretHozukiProfileByKey,
   getSecretHozukiProfileByLabel,
 } from "../lib/secretRank.js";
+import {
+  getLegacyQuestions,
+  getQuestionSetByIds,
+  getQuestionStats,
+  pickQuestionSet,
+  TEST_QUESTION_COUNT,
+} from "../lib/questionBank.js";
 
 /**
  * L'Épreuve du Mizukage — Test de QI shinobi (Kirigakure)
@@ -325,6 +332,8 @@ const SECRET_HOZUKI_RANKS = {
   },
 };
 
+const LEGACY_QUESTIONS = getLegacyQuestions();
+
 const DIFF_COLORS = ["", "#7FD4C0", "#C8A04A", "#D88A60", "#E06070", "#F0D060"];
 const DIFF_LABELS = ["", "Facile", "Moyen", "Difficile", "Expert", "Impossible"];
 
@@ -379,8 +388,25 @@ function computeTimeAdjustment(elapsedSec) {
   return TIME_PENALTY_MIN;
 }
 
-function evaluateAnswers(answerList) {
-  const answersSnapshot = QUESTIONS.map((_, index) => {
+function resolveQuestionsForEntry(entry) {
+  const entryQuestions = getQuestionSetByIds(entry?.questionIds);
+
+  if (entryQuestions.length) {
+    return entryQuestions;
+  }
+
+  const legacyLength =
+    Array.isArray(entry?.answers) && entry.answers.length
+      ? entry.answers.length
+      : LEGACY_QUESTIONS.length;
+
+  return LEGACY_QUESTIONS.slice(0, legacyLength);
+}
+
+function evaluateAnswers(answerList, questions) {
+  const normalizedQuestions = Array.isArray(questions) ? questions : [];
+  const stats = getQuestionStats(normalizedQuestions);
+  const answersSnapshot = normalizedQuestions.map((_, index) => {
     const value = answerList?.[index];
     return Number.isFinite(value) ? value : -1;
   });
@@ -390,7 +416,7 @@ function evaluateAnswers(answerList) {
   let correctAnswers = 0;
   let normalCorrectAnswers = 0;
 
-  QUESTIONS.forEach((question, index) => {
+  normalizedQuestions.forEach((question, index) => {
     if (answersSnapshot[index] !== question.answer) {
       return;
     }
@@ -405,8 +431,8 @@ function evaluateAnswers(answerList) {
   });
 
   const bonusEarned =
-    IMPOSSIBLE_INDEX >= 0 &&
-    answersSnapshot[IMPOSSIBLE_INDEX] === QUESTIONS[IMPOSSIBLE_INDEX].answer;
+    stats.impossibleIndex >= 0 &&
+    answersSnapshot[stats.impossibleIndex] === normalizedQuestions[stats.impossibleIndex].answer;
 
   return {
     answersSnapshot,
@@ -418,21 +444,23 @@ function evaluateAnswers(answerList) {
   };
 }
 
-function computeQI(score, elapsedSec, bonusEarned) {
-  const baseRatio = Math.min(1, score / NORMAL_MAX);
+function computeQI(score, normalMax, elapsedSec, bonusEarned) {
+  const baseRatio = normalMax > 0 ? Math.min(1, score / normalMax) : 0;
   const base = QI_BASE + baseRatio * ANSWER_QI_WEIGHT;
   const timeBonus = computeTimeAdjustment(elapsedSec) * baseRatio;
   const secretBonus = bonusEarned ? IMPOSSIBLE_QI_BONUS : 0;
   return Math.max(60, Math.min(180, Math.round(base + timeBonus + secretBonus)));
 }
 
-function resolveAttemptOutcome(shinobiName, answerList, elapsedSec) {
-  const evaluation = evaluateAnswers(answerList);
+function resolveAttemptOutcome(shinobiName, answerList, elapsedSec, questions) {
+  const normalizedQuestions = Array.isArray(questions) ? questions : [];
+  const stats = getQuestionStats(normalizedQuestions);
+  const evaluation = evaluateAnswers(answerList, normalizedQuestions);
   const secretOverride = buildSecretHozukiOverride({
     name: shinobiName,
-    normalMax: NORMAL_MAX,
-    totalMax: TOTAL_MAX,
-    questionMeta: QUESTIONS,
+    normalMax: stats.normalMax,
+    totalMax: stats.totalMax,
+    questionMeta: normalizedQuestions,
   });
 
   if (secretOverride) {
@@ -440,10 +468,16 @@ function resolveAttemptOutcome(shinobiName, answerList, elapsedSec) {
       ...secretOverride,
       rank: getRankVisual(secretOverride.rank, true, secretOverride.secretRank),
       bonusEarned: secretOverride.bonus,
+      questionIds: normalizedQuestions.map((question) => question.id),
     };
   }
 
-  const qi = computeQI(evaluation.normalScore, elapsedSec, evaluation.bonusEarned);
+  const qi = computeQI(
+    evaluation.normalScore,
+    stats.normalMax,
+    elapsedSec,
+    evaluation.bonusEarned
+  );
 
   return {
     qi,
@@ -457,22 +491,61 @@ function resolveAttemptOutcome(shinobiName, answerList, elapsedSec) {
     answers: evaluation.answersSnapshot,
     royalHozuki: false,
     secretRank: "",
+    questionIds: normalizedQuestions.map((question) => question.id),
   };
 }
 
 function exportCSV(entries) {
-  const headers = ["Rang_classement", "Nom", "QI", "Rang", "Score", "Temps_secondes", "Bonus_resolu", "Date", ...QUESTIONS.map((_, i) => `Q${i + 1}_correct`)];
-  const rows = entries.map((e, i) => [
-    i + 1,
-    `"${e.name.replace(/"/g, '""')}"`,
-    e.qi,
-    e.rank,
-    e.score,
-    e.time,
-    e.bonus ? "OUI" : "NON",
-    e.date,
-    ...(e.answers || []).map((a, qi) => (a === QUESTIONS[qi].answer ? "1" : "0")),
-  ]);
+  const resolvedQuestions = entries.map((entry) => resolveQuestionsForEntry(entry));
+  const maxQuestionCount = resolvedQuestions.reduce(
+    (maxCount, questions) => Math.max(maxCount, questions.length),
+    0
+  );
+  const questionHeaders = Array.from({ length: maxQuestionCount }, (_, index) => [
+    `Q${index + 1}_id`,
+    `Q${index + 1}_correct`,
+  ]).flat();
+  const headers = [
+    "Rang_classement",
+    "Nom",
+    "QI",
+    "Rang",
+    "Score",
+    "Temps_secondes",
+    "Bonus_resolu",
+    "Date",
+    "Question_ids",
+    ...questionHeaders,
+  ];
+  const rows = entries.map((entry, index) => {
+    const questions = resolvedQuestions[index];
+    const answerCells = Array.from({ length: maxQuestionCount }, (_, questionIndex) => {
+      const question = questions[questionIndex];
+      const userAnswer =
+        Array.isArray(entry.answers) && Number.isFinite(entry.answers[questionIndex])
+          ? entry.answers[questionIndex]
+          : -1;
+
+      if (!question) {
+        return ["", ""];
+      }
+
+      return [question.id, userAnswer === question.answer ? "1" : "0"];
+    }).flat();
+
+    return [
+      index + 1,
+      `"${entry.name.replace(/"/g, '""')}"`,
+      entry.qi,
+      entry.rank,
+      entry.score,
+      entry.time,
+      entry.bonus ? "OUI" : "NON",
+      entry.date,
+      `"${questions.map((question) => question.id).join("|")}"`,
+      ...answerCells,
+    ];
+  });
   const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
   const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -489,7 +562,8 @@ export default function TestQIShinobi() {
   const [screen, setScreen] = useState("intro"); // intro | test | results | admin-login | admin
   const [name, setName] = useState("");
   const [idx, setIdx] = useState(0);
-  const [answers, setAnswers] = useState(() => new Array(QUESTIONS.length).fill(-1));
+  const [sessionQuestions, setSessionQuestions] = useState(() => pickQuestionSet());
+  const [answers, setAnswers] = useState(() => new Array(TEST_QUESTION_COUNT).fill(-1));
   const [startTime, setStartTime] = useState(0);
   const [endTime, setEndTime] = useState(0);
   const [elapsed, setElapsed] = useState(0);
@@ -501,6 +575,7 @@ export default function TestQIShinobi() {
   const [expandedRow, setExpandedRow] = useState(null);
   const [syncMode, setSyncMode] = useState("loading");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const sessionStats = getQuestionStats(sessionQuestions);
 
   async function refreshLeaderboard() {
     const result = await fetchLeaderboard();
@@ -543,7 +618,9 @@ export default function TestQIShinobi() {
 
   const handleStart = () => {
     if (!name.trim()) return;
-    setAnswers(new Array(QUESTIONS.length).fill(-1));
+    const nextQuestions = pickQuestionSet();
+    setSessionQuestions(nextQuestions);
+    setAnswers(new Array(nextQuestions.length).fill(-1));
     setIdx(0);
     setStartTime(Date.now());
     setEndTime(0);
@@ -558,7 +635,7 @@ export default function TestQIShinobi() {
   };
 
   const handleNext = async () => {
-    if (idx < QUESTIONS.length - 1) {
+    if (idx < sessionQuestions.length - 1) {
       setIdx(idx + 1);
       return;
     }
@@ -571,7 +648,7 @@ export default function TestQIShinobi() {
 
     try {
       const totalSec = Math.round((finalEnd - startTime) / 1000);
-      const outcome = resolveAttemptOutcome(name, answers, totalSec);
+      const outcome = resolveAttemptOutcome(name, answers, totalSec, sessionQuestions);
       const entryId = Date.now() + "_" + Math.random().toString(36).slice(2, 8);
       const entry = {
         id: entryId,
@@ -586,6 +663,7 @@ export default function TestQIShinobi() {
         bonus: outcome.bonus,
         royalHozuki: outcome.royalHozuki,
         secretRank: outcome.secretRank,
+        questionIds: outcome.questionIds,
         date: new Date().toISOString(),
         answers: outcome.answers, // sauvegarde détaillée pour l'admin
       };
@@ -684,15 +762,18 @@ export default function TestQIShinobi() {
   };
 
   const totalSec = Math.round((endTime - startTime) / 1000);
-  const resultOutcome = screen === "results" ? resolveAttemptOutcome(name, answers, totalSec) : null;
-  const currentEvaluation = resultOutcome || evaluateAnswers(answers);
+  const resultOutcome =
+    screen === "results"
+      ? resolveAttemptOutcome(name, answers, totalSec, sessionQuestions)
+      : null;
+  const currentEvaluation = resultOutcome || evaluateAnswers(answers, sessionQuestions);
   const normalScore = currentEvaluation.normalScore;
   const bonusEarned = currentEvaluation.bonusEarned ?? currentEvaluation.bonus;
   const totalScore = currentEvaluation.score ?? currentEvaluation.totalScore;
   const qi = resultOutcome?.qi ?? 0;
   const rank = resultOutcome?.rank ?? null;
 
-  const currentQ = QUESTIONS[idx];
+  const currentQ = sessionQuestions[idx];
   const isImpossible = currentQ?.impossible;
 
   return (
@@ -715,7 +796,7 @@ export default function TestQIShinobi() {
           <div className="qi-fade">
             <div style={styles.card}>
               <p style={styles.body}>
-                <strong>{QUESTIONS.length} questions</strong> sur Kirigakure : armes, clans, Genjutsu, logique. Ton QI dépend de la justesse de tes réponses et de ta vitesse.
+                <strong>{TEST_QUESTION_COUNT} questions tirées aléatoirement</strong> sur Kirigakure : armes, clans, Genjutsu, logique. Ton QI dépend de la justesse de tes réponses et de ta vitesse.
               </p>
               <p style={{ ...styles.body, color: "#F0D060", marginTop: 10 }}>
                 ⚜ La dernière question est impossible — la réussir donne <strong>+10 QI</strong> et un gros bonus de points.
@@ -748,8 +829,8 @@ export default function TestQIShinobi() {
             </button>
 
             <div style={styles.statGrid}>
-              <Stat label="Questions" value={QUESTIONS.length} />
-              <Stat label="Points max" value={TOTAL_MAX} />
+              <Stat label="Questions" value={TEST_QUESTION_COUNT} />
+              <Stat label="Points max" value="variable" />
               <Stat label="Temps cible" value={`~${Math.round(TIME_TARGET_SEC / 60)} min`} />
               <Stat label="Rangs" value="D → X" />
             </div>
@@ -886,15 +967,17 @@ export default function TestQIShinobi() {
                   {leaderboard.map((e, i) => {
                     const r = getRankVisual(e.rank, e.royalHozuki, e.secretRank);
                     const secretVisual = getSecretRankVisual(e.secretRank, e.rank);
+                    const entryQuestions = resolveQuestionsForEntry(e);
+                    const entryStats = getQuestionStats(entryQuestions);
                     const isExpanded = expandedRow === e.id;
                     const correctCount =
                       typeof e.correctAnswers === "number"
                         ? e.correctAnswers
-                        : evaluateAnswers(e.answers).correctAnswers;
+                        : evaluateAnswers(e.answers, entryQuestions).correctAnswers;
                     const normalCorrectCount =
                       typeof e.normalCorrectAnswers === "number"
                         ? e.normalCorrectAnswers
-                        : evaluateAnswers(e.answers).normalCorrectAnswers;
+                        : evaluateAnswers(e.answers, entryQuestions).normalCorrectAnswers;
                     return (
                       <div key={e.id} style={{ borderBottom: "1px solid rgba(232,216,184,0.08)" }}>
                         <div
@@ -930,7 +1013,7 @@ export default function TestQIShinobi() {
                           }}>{e.royalHozuki && secretVisual ? secretVisual.shortLabel : e.rank}</span>
                           <span style={{ color: r.color, fontWeight: 600, minWidth: 36, textAlign: "right" }}>{e.qi}</span>
                           <span style={{ color: "#8090A0", fontSize: 12, minWidth: 30, textAlign: "right" }}>
-                            {correctCount}/{QUESTIONS.length}
+                            {correctCount}/{entryQuestions.length}
                           </span>
                           <span style={{ color: "#7FD4C0", fontSize: 18 }}>
                             {isExpanded ? "▾" : "▸"}
@@ -942,11 +1025,11 @@ export default function TestQIShinobi() {
                           <div style={{ padding: "16px 12px 20px", background: "rgba(0,0,0,0.15)", borderRadius: 6, marginTop: 4, marginBottom: 8 }}>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginBottom: 16, fontSize: 12 }}>
                               {e.royalHozuki && secretVisual && <DetailItem label="Titre" value={secretVisual.label} color="#F8E6A0" />}
-                              <DetailItem label="Score" value={`${e.score}/${TOTAL_MAX}`} />
-                              <DetailItem label="Bonnes réponses" value={`${correctCount}/${QUESTIONS.length}`} />
-                              <DetailItem label="Classiques" value={`${normalCorrectCount}/${NORMAL_QUESTION_COUNT}`} />
+                              <DetailItem label="Score" value={`${e.score}/${entryStats.totalMax}`} />
+                              <DetailItem label="Bonnes réponses" value={`${correctCount}/${entryQuestions.length}`} />
+                              <DetailItem label="Classiques" value={`${normalCorrectCount}/${entryStats.normalQuestionCount}`} />
                               <DetailItem label="Temps" value={formatTime(e.time)} />
-                              <DetailItem label="Précision" value={`${Math.round((e.score / TOTAL_MAX) * 100)}%`} />
+                              <DetailItem label="Précision" value={entryStats.totalMax ? `${Math.round((e.score / entryStats.totalMax) * 100)}%` : "0%"} />
                               <DetailItem label="Bonus" value={e.bonus ? "✓ Oui" : "✗ Non"} color={e.bonus ? "#F0D060" : "#8090A0"} />
                               <DetailItem label="Date" value={new Date(e.date).toLocaleDateString("fr-FR")} />
                               <DetailItem label="Heure" value={new Date(e.date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} />
@@ -956,7 +1039,7 @@ export default function TestQIShinobi() {
                               Réponses détaillées
                             </div>
                             <div>
-                              {QUESTIONS.map((q, qi) => {
+                              {entryQuestions.map((q, qi) => {
                                 const userAnswer = (e.answers && e.answers[qi] !== undefined) ? e.answers[qi] : -1;
                                 const ok = userAnswer === q.answer;
                                 return (
@@ -1018,15 +1101,15 @@ export default function TestQIShinobi() {
           <div className="qi-fade" key={idx}>
             <div style={styles.topBar}>
               <div style={styles.progressBar}>
-                <div style={{
+              <div style={{
                   ...styles.progressFill,
-                  width: `${((idx + 1) / QUESTIONS.length) * 100}%`,
+                  width: `${((idx + 1) / sessionQuestions.length) * 100}%`,
                   background: isImpossible ? "linear-gradient(90deg, #F0D060, #E06070)" : "linear-gradient(90deg, #5FA8D4, #7FD4C0)",
                 }} />
               </div>
               <div style={styles.topMeta}>
                 <span>
-                  <span style={{ color: "#7FD4C0" }}>⛩ {name}</span> · Question <strong style={{ color: "#E8D8B8" }}>{idx + 1}</strong> sur {QUESTIONS.length}
+                  <span style={{ color: "#7FD4C0" }}>⛩ {name}</span> · Question <strong style={{ color: "#E8D8B8" }}>{idx + 1}</strong> sur {sessionQuestions.length}
                 </span>
                 <span style={styles.timer}>⏱ {formatTime(elapsed)}</span>
               </div>
@@ -1100,7 +1183,7 @@ export default function TestQIShinobi() {
                 onClick={handleNext}
                 disabled={answers[idx] === -1 || isSubmitting}
               >
-                {isSubmitting ? "Inscription au registre..." : idx === QUESTIONS.length - 1 ? "Sceller mon verdict →" : "Suivant →"}
+                {isSubmitting ? "Inscription au registre..." : idx === sessionQuestions.length - 1 ? "Sceller mon verdict →" : "Suivant →"}
               </button>
             </div>
           </div>
@@ -1158,10 +1241,10 @@ export default function TestQIShinobi() {
             </div>
 
             <div style={styles.statGrid}>
-              <Stat label="Score" value={`${totalScore}/${TOTAL_MAX}`} />
-              <Stat label="Bonnes réponses" value={`${currentEvaluation.correctAnswers}/${QUESTIONS.length}`} />
+              <Stat label="Score" value={`${totalScore}/${sessionStats.totalMax}`} />
+              <Stat label="Bonnes réponses" value={`${currentEvaluation.correctAnswers}/${sessionQuestions.length}`} />
               <Stat label="Temps" value={formatTime(totalSec)} />
-              <Stat label="Précision" value={`${Math.round((totalScore / TOTAL_MAX) * 100)}%`} />
+              <Stat label="Précision" value={sessionStats.totalMax ? `${Math.round((totalScore / sessionStats.totalMax) * 100)}%` : "0%"} />
             </div>
 
             <div style={styles.card}>

@@ -5,6 +5,11 @@ import {
   getSecretHozukiProfileByLabel,
   isSecretHozukiRankLabel,
 } from "../lib/secretRank.js";
+import {
+  getLegacyQuestions,
+  getQuestionSetByIds,
+  getQuestionStats,
+} from "../lib/questionBank.js";
 
 const LEADERBOARD_KEY = "kiri:leaderboard:v2";
 const MAX_ENTRIES = 100;
@@ -55,6 +60,7 @@ const RANKS = [
   { label: "C", min: 85 },
   { label: "D", min: 0 },
 ];
+const LEGACY_QUESTIONS = getLegacyQuestions();
 
 let redisClient;
 
@@ -95,6 +101,14 @@ function sanitizeAnswers(value) {
     .filter((answer) => Number.isFinite(answer));
 }
 
+function sanitizeQuestionIds(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((id) => String(id)).filter(Boolean);
+}
+
 function getRankLabel(qi) {
   return (RANKS.find((rank) => qi >= rank.min) || RANKS[RANKS.length - 1]).label;
 }
@@ -124,8 +138,25 @@ function computeTimeAdjustment(elapsedSec) {
   return TIME_PENALTY_MIN;
 }
 
-function evaluateAnswers(answerList) {
-  const answersSnapshot = QUESTION_META.map((_, index) => {
+function resolveQuestionsForEntry(entry) {
+  const entryQuestions = getQuestionSetByIds(entry?.questionIds);
+
+  if (entryQuestions.length) {
+    return entryQuestions;
+  }
+
+  const legacyLength =
+    Array.isArray(entry?.answers) && entry.answers.length
+      ? entry.answers.length
+      : LEGACY_QUESTIONS.length;
+
+  return LEGACY_QUESTIONS.slice(0, legacyLength);
+}
+
+function evaluateAnswers(answerList, questions) {
+  const normalizedQuestions = Array.isArray(questions) ? questions : [];
+  const stats = getQuestionStats(normalizedQuestions);
+  const answersSnapshot = normalizedQuestions.map((_, index) => {
     const value = answerList?.[index];
     return Number.isFinite(value) ? value : -1;
   });
@@ -135,7 +166,7 @@ function evaluateAnswers(answerList) {
   let correctAnswers = 0;
   let normalCorrectAnswers = 0;
 
-  QUESTION_META.forEach((question, index) => {
+  normalizedQuestions.forEach((question, index) => {
     if (answersSnapshot[index] !== question.answer) {
       return;
     }
@@ -150,8 +181,8 @@ function evaluateAnswers(answerList) {
   });
 
   const bonusEarned =
-    IMPOSSIBLE_INDEX >= 0 &&
-    answersSnapshot[IMPOSSIBLE_INDEX] === QUESTION_META[IMPOSSIBLE_INDEX].answer;
+    stats.impossibleIndex >= 0 &&
+    answersSnapshot[stats.impossibleIndex] === normalizedQuestions[stats.impossibleIndex].answer;
 
   return {
     answersSnapshot,
@@ -163,8 +194,8 @@ function evaluateAnswers(answerList) {
   };
 }
 
-function computeQI(score, elapsedSec, bonusEarned) {
-  const baseRatio = Math.min(1, score / NORMAL_MAX);
+function computeQI(score, normalMax, elapsedSec, bonusEarned) {
+  const baseRatio = normalMax > 0 ? Math.min(1, score / normalMax) : 0;
   const base = QI_BASE + baseRatio * ANSWER_QI_WEIGHT;
   const timeBonus = computeTimeAdjustment(elapsedSec) * baseRatio;
   const secretBonus = bonusEarned ? IMPOSSIBLE_QI_BONUS : 0;
@@ -191,28 +222,32 @@ function sanitizeEntry(rawEntry) {
     royalHozuki: Boolean(rawEntry?.royalHozuki) || Boolean(secretProfile),
     secretRank: String(rawEntry?.secretRank || secretProfile?.key || ""),
     date: safeDate,
+    questionIds: sanitizeQuestionIds(rawEntry?.questionIds),
     answers: sanitizeAnswers(rawEntry?.answers),
   };
 }
 
 function stripAnswers(entry) {
-  const { answers, ...publicEntry } = entry;
+  const { answers, questionIds, ...publicEntry } = entry;
   return publicEntry;
 }
 
 function migrateEntry(rawEntry) {
   const entry = sanitizeEntry(rawEntry);
+  const questions = resolveQuestionsForEntry(entry);
+  const stats = getQuestionStats(questions);
   const secretOverride = buildSecretHozukiOverride({
     name: entry.name,
-    normalMax: NORMAL_MAX,
-    totalMax: TOTAL_MAX,
-    questionMeta: QUESTION_META,
+    normalMax: stats.normalMax,
+    totalMax: stats.totalMax,
+    questionMeta: questions,
   });
 
   if (secretOverride) {
     return {
       ...entry,
       ...secretOverride,
+      questionIds: questions.map((question) => question.id),
     };
   }
 
@@ -222,6 +257,7 @@ function migrateEntry(rawEntry) {
         ...entry,
         royalHozuki: false,
         secretRank: "",
+        questionIds: questions.map((question) => question.id),
         rank: getRankLabel(entry.qi),
       };
     }
@@ -229,8 +265,13 @@ function migrateEntry(rawEntry) {
     return entry;
   }
 
-  const evaluation = evaluateAnswers(entry.answers);
-  const qi = computeQI(evaluation.normalScore, entry.time, evaluation.bonusEarned);
+  const evaluation = evaluateAnswers(entry.answers, questions);
+  const qi = computeQI(
+    evaluation.normalScore,
+    stats.normalMax,
+    entry.time,
+    evaluation.bonusEarned
+  );
 
   return {
     ...entry,
@@ -243,6 +284,7 @@ function migrateEntry(rawEntry) {
     bonus: evaluation.bonusEarned,
     royalHozuki: false,
     secretRank: "",
+    questionIds: questions.map((question) => question.id),
     answers: evaluation.answersSnapshot,
   };
 }
