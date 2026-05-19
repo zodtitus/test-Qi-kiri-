@@ -119,6 +119,29 @@ function sanitizeQuestionIds(value) {
   return value.map((id) => String(id)).filter(Boolean);
 }
 
+function normalizeLeaderboardName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function getEntryWeight(entry) {
+  return Math.max(1, Number.parseInt(entry?.attemptCount, 10) || 1);
+}
+
+function getEntryBonusCount(entry) {
+  const explicitCount = Number.parseInt(entry?.bonusCount, 10);
+  if (Number.isFinite(explicitCount) && explicitCount >= 0) {
+    return explicitCount;
+  }
+
+  return entry?.bonus ? getEntryWeight(entry) : 0;
+}
+
 function getRankLabel(qi) {
   return (RANKS.find((rank) => qi >= rank.min) || RANKS[RANKS.length - 1]).label;
 }
@@ -338,6 +361,13 @@ function sanitizeEntry(rawEntry) {
     royalHozuki: Boolean(rawEntry?.royalHozuki) || Boolean(secretProfile),
     secretRank: String(rawEntry?.secretRank || secretProfile?.key || ""),
     date: safeDate,
+    attemptCount: Math.max(1, Number.parseInt(rawEntry?.attemptCount, 10) || 1),
+    bonusCount: Math.max(
+      0,
+      Number.parseInt(rawEntry?.bonusCount, 10) || (rawEntry?.bonus ? 1 : 0)
+    ),
+    aggregateKey:
+      String(rawEntry?.aggregateKey || "").trim() || normalizeLeaderboardName(rawEntry?.name),
     questionIds: sanitizeQuestionIds(rawEntry?.questionIds),
     answers: sanitizeAnswers(rawEntry?.answers),
   };
@@ -346,6 +376,85 @@ function sanitizeEntry(rawEntry) {
 function stripAnswers(entry) {
   const { answers, questionIds, copyPenalties, ...publicEntry } = entry;
   return publicEntry;
+}
+
+function aggregateLeaderboardEntries(entries) {
+  const groups = new Map();
+
+  entries.forEach((rawEntry) => {
+    const entry = sanitizeEntry(rawEntry);
+    const groupKey = entry.aggregateKey || normalizeLeaderboardName(entry.name) || entry.id;
+    const weight = getEntryWeight(entry);
+    const bonusCount = getEntryBonusCount(entry);
+    const current = groups.get(groupKey);
+
+    if (!current) {
+      groups.set(groupKey, {
+        aggregateKey: groupKey,
+        latestEntry: entry,
+        latestTimestamp: new Date(entry.date).getTime() || 0,
+        attemptCount: weight,
+        bonusCount,
+        qiTotal: entry.qi * weight,
+        scoreTotal: entry.score * weight,
+        normalScoreTotal: entry.normalScore * weight,
+        correctAnswersTotal: entry.correctAnswers * weight,
+        normalCorrectAnswersTotal: entry.normalCorrectAnswers * weight,
+        timeTotal: entry.time * weight,
+        copyPenaltyTotal: entry.copyPenalties * weight,
+      });
+      return;
+    }
+
+    const entryTimestamp = new Date(entry.date).getTime() || 0;
+    if (entryTimestamp >= current.latestTimestamp) {
+      current.latestEntry = entry;
+      current.latestTimestamp = entryTimestamp;
+    }
+
+    current.attemptCount += weight;
+    current.bonusCount += bonusCount;
+    current.qiTotal += entry.qi * weight;
+    current.scoreTotal += entry.score * weight;
+    current.normalScoreTotal += entry.normalScore * weight;
+    current.correctAnswersTotal += entry.correctAnswers * weight;
+    current.normalCorrectAnswersTotal += entry.normalCorrectAnswers * weight;
+    current.timeTotal += entry.time * weight;
+    current.copyPenaltyTotal += entry.copyPenalties * weight;
+  });
+
+  return sortEntries(
+    Array.from(groups.values()).map((group) => {
+      const latestEntry = group.latestEntry;
+      const averageQi = Math.round(group.qiTotal / group.attemptCount);
+      const royalHozuki = Boolean(latestEntry.royalHozuki);
+      const secretRank = String(latestEntry.secretRank || "");
+
+      return sanitizeEntry({
+        ...latestEntry,
+        id: latestEntry.id,
+        name: latestEntry.name,
+        qi: averageQi,
+        rank: royalHozuki && secretRank ? latestEntry.rank : getRankLabel(averageQi),
+        score: Math.round(group.scoreTotal / group.attemptCount),
+        normalScore: Math.round(group.normalScoreTotal / group.attemptCount),
+        correctAnswers: Math.round(group.correctAnswersTotal / group.attemptCount),
+        normalCorrectAnswers: Math.round(
+          group.normalCorrectAnswersTotal / group.attemptCount
+        ),
+        time: Math.round(group.timeTotal / group.attemptCount),
+        copyPenalties: Math.round(group.copyPenaltyTotal / group.attemptCount),
+        bonus: group.bonusCount > 0,
+        bonusCount: group.bonusCount,
+        attemptCount: group.attemptCount,
+        aggregateKey: group.aggregateKey,
+        royalHozuki,
+        secretRank,
+        questionIds: latestEntry.questionIds,
+        answers: latestEntry.answers,
+      });
+    })
+  ).slice(0, MAX_ENTRIES);
 }
 
 function migrateEntry(rawEntry) {
@@ -489,7 +598,7 @@ export async function getPublicLeaderboard() {
     return { configured: false, entries: [] };
   }
 
-  const entries = await readLeaderboard(redis);
+  const entries = aggregateLeaderboardEntries(await readLeaderboard(redis));
 
   return {
     configured: true,
@@ -504,7 +613,7 @@ export async function getAdminLeaderboard() {
     return { configured: false, entries: [] };
   }
 
-  const entries = await readLeaderboard(redis);
+  const entries = aggregateLeaderboardEntries(await readLeaderboard(redis));
 
   return {
     configured: true,
@@ -523,7 +632,7 @@ export async function saveLeaderboardEntry(rawEntry) {
   const currentEntries = await readLeaderboard(redis);
   const nextEntries = await writeLeaderboard(redis, [entry, ...currentEntries.filter((item) => item.id !== entry.id)]);
 
-  const leaderboard = nextEntries.map(stripAnswers);
+  const leaderboard = aggregateLeaderboardEntries(nextEntries).map(stripAnswers);
 
   return {
     configured: true,
@@ -532,7 +641,7 @@ export async function saveLeaderboardEntry(rawEntry) {
   };
 }
 
-export async function deleteLeaderboardEntry(id) {
+export async function deleteLeaderboardEntry(id, aggregateKey = "") {
   const redis = getRedis();
 
   if (!redis) {
@@ -540,14 +649,19 @@ export async function deleteLeaderboardEntry(id) {
   }
 
   const currentEntries = await readLeaderboard(redis);
-  const nextEntries = await writeLeaderboard(
-    redis,
-    id ? currentEntries.filter((entry) => entry.id !== id) : currentEntries
-  );
+  const normalizedAggregateKey = String(aggregateKey || "").trim();
+  const filteredEntries = normalizedAggregateKey
+    ? currentEntries.filter(
+        (entry) => normalizeLeaderboardName(entry.name) !== normalizedAggregateKey
+      )
+    : id
+      ? currentEntries.filter((entry) => entry.id !== id)
+      : currentEntries;
+  const nextEntries = await writeLeaderboard(redis, filteredEntries);
 
   return {
     configured: true,
-    entries: nextEntries,
+    entries: aggregateLeaderboardEntries(nextEntries),
   };
 }
 

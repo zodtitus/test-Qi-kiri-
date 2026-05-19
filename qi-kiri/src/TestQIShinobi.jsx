@@ -840,18 +840,25 @@ function exportCSV(entries) {
   const headers = [
     "Rang_classement",
     "Nom",
+    "Tentatives",
     "QI",
     "Rang",
     "Score",
     "Temps_secondes",
     "Bonus_resolu",
+    "Bonus_resolu_compte",
     "Date",
     "Question_ids",
     ...questionHeaders,
   ];
   const rows = entries.map((entry, index) => {
     const questions = resolvedQuestions[index];
+    const isAveragedEntry = Number(entry.attemptCount || 1) > 1;
     const answerCells = Array.from({ length: maxQuestionCount }, (_, questionIndex) => {
+      if (isAveragedEntry) {
+        return ["", ""];
+      }
+
       const question = questions[questionIndex];
       const userAnswer =
         Array.isArray(entry.answers) && Number.isFinite(entry.answers[questionIndex])
@@ -868,13 +875,15 @@ function exportCSV(entries) {
     return [
       index + 1,
       `"${entry.name.replace(/"/g, '""')}"`,
+      entry.attemptCount || 1,
       entry.qi,
       entry.rank,
       entry.score,
       entry.time,
       entry.bonus ? "OUI" : "NON",
+      entry.bonusCount || 0,
       entry.date,
-      `"${questions.map((question) => question.id).join("|")}"`,
+      isAveragedEntry ? "" : `"${questions.map((question) => question.id).join("|")}"`,
       ...answerCells,
     ];
   });
@@ -1112,11 +1121,11 @@ export default function TestQIShinobi() {
     }
   };
 
-  const handleDeleteEntry = async (id) => {
+  const handleDeleteEntry = async (id, aggregateKey = "") => {
     if (confirm("Supprimer cette entrée du tableau ?")) {
       if (syncMode === "shared") {
         try {
-          const result = await deleteRemoteLeaderboardEntry(id, adminSessionPassword);
+          const result = await deleteRemoteLeaderboardEntry(id, adminSessionPassword, aggregateKey);
           setLeaderboard(result.entries);
           setExpandedRow(null);
         } catch {
@@ -1125,7 +1134,7 @@ export default function TestQIShinobi() {
         return;
       }
 
-      const updated = deleteLocalEntry(id);
+      const updated = deleteLocalEntry(id, aggregateKey);
       setLeaderboard(updated);
       setExpandedRow(null);
     }
@@ -1382,6 +1391,11 @@ export default function TestQIShinobi() {
                                 {secretVisual.label}
                               </span>
                             )}
+                            {e.attemptCount > 1 && (
+                              <span style={{ display: "block", fontSize: 11, color: "#7FD4C0", marginTop: 2 }}>
+                                Moyenne sur {e.attemptCount} passages
+                              </span>
+                            )}
                             {e.bonus && <span style={{ marginLeft: 6, fontSize: 11, color: "#F0D060" }}>⚜</span>}
                           </span>
                           <span style={{
@@ -1405,16 +1419,23 @@ export default function TestQIShinobi() {
                           <div style={{ padding: "16px 12px 20px", background: "rgba(0,0,0,0.15)", borderRadius: 6, marginTop: 4, marginBottom: 8 }}>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginBottom: 16, fontSize: 12 }}>
                               {e.royalHozuki && secretVisual && <DetailItem label="Titre" value={secretVisual.label} color="#F8E6A0" />}
-                              <DetailItem label="Score" value={`${e.score}/${entryStats.totalMax}`} />
-                              <DetailItem label="Bonnes réponses" value={`${correctCount}/${entryQuestions.length}`} />
-                              <DetailItem label="Classiques" value={`${normalCorrectCount}/${entryStats.normalQuestionCount}`} />
-                              <DetailItem label="Temps" value={formatTime(e.time)} />
+                              <DetailItem label="Tentatives" value={e.attemptCount || 1} />
+                              <DetailItem label={e.attemptCount > 1 ? "Score moyen" : "Score"} value={`${e.score}/${entryStats.totalMax}`} />
+                              <DetailItem label={e.attemptCount > 1 ? "Bonnes réponses moy." : "Bonnes réponses"} value={`${correctCount}/${entryQuestions.length}`} />
+                              <DetailItem label={e.attemptCount > 1 ? "Classiques moy." : "Classiques"} value={`${normalCorrectCount}/${entryStats.normalQuestionCount}`} />
+                              <DetailItem label={e.attemptCount > 1 ? "Temps moyen" : "Temps"} value={formatTime(e.time)} />
                               <DetailItem label="Précision" value={entryStats.totalMax ? `${Math.round((e.score / entryStats.totalMax) * 100)}%` : "0%"} />
-                              <DetailItem label="Bonus" value={e.bonus ? "✓ Oui" : "✗ Non"} color={e.bonus ? "#F0D060" : "#8090A0"} />
+                              <DetailItem label="Bonus" value={e.attemptCount > 1 ? `${e.bonusCount || 0}/${e.attemptCount}` : e.bonus ? "✓ Oui" : "✗ Non"} color={e.bonus ? "#F0D060" : "#8090A0"} />
                               <DetailItem label="Date" value={new Date(e.date).toLocaleDateString("fr-FR")} />
                               <DetailItem label="Heure" value={new Date(e.date).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })} />
                             </div>
 
+                            {e.attemptCount > 1 && (
+                              <div style={{ fontSize: 12, color: "#8090A0", lineHeight: 1.5, marginBottom: 10 }}>
+                                Cette ligne montre une moyenne sur {e.attemptCount} passages.
+                                Les réponses ci-dessous correspondent au dernier passage enregistré.
+                              </div>
+                            )}
                             <div style={{ fontSize: 11, color: "#5FA8D4", letterSpacing: 1.5, fontWeight: 600, textTransform: "uppercase", marginBottom: 8 }}>
                               Réponses détaillées
                             </div>
@@ -1461,7 +1482,7 @@ export default function TestQIShinobi() {
 
                             <button
                               style={{ ...styles.linkBtn, color: "#E06070", marginTop: 12 }}
-                              onClick={(ev) => { ev.stopPropagation(); handleDeleteEntry(e.id); }}
+                              onClick={(ev) => { ev.stopPropagation(); handleDeleteEntry(e.id, e.aggregateKey); }}
                             >
                               🗑 Supprimer cette entrée
                             </button>
@@ -1779,6 +1800,11 @@ function LeaderboardTable({ entries, highlightId }) {
                   {e.royalHozuki && secretVisual && (
                     <div style={{ fontSize: 10, color: "#F8E6A0", marginTop: 2 }}>
                       {secretVisual.label}
+                    </div>
+                  )}
+                  {e.attemptCount > 1 && (
+                    <div style={{ fontSize: 10, color: "#7FD4C0", marginTop: 2 }}>
+                      Moyenne sur {e.attemptCount} passages
                     </div>
                   )}
                 </td>

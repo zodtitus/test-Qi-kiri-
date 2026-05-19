@@ -46,7 +46,11 @@ export default async function handler(request, response) {
 
   if (request.method === "DELETE") {
     const id = typeof request.query?.id === "string" ? request.query.id : "";
-    const result = id ? await deleteLeaderboardEntry(id) : await clearLeaderboard();
+    const aggregateKey =
+      typeof request.query?.aggregateKey === "string" ? request.query.aggregateKey : "";
+    const result = id || aggregateKey
+      ? await deleteLeaderboardEntry(id, aggregateKey)
+      : await clearLeaderboard();
 
     return response.status(200).json({
       mode: "shared",

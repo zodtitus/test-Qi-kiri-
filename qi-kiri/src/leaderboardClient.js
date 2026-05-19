@@ -7,6 +7,42 @@ const LOCAL_LEADERBOARD_KEY = "kiri-qi-leaderboard";
 const MAX_ENTRIES = 100;
 const PUBLIC_ENDPOINT = "/api/leaderboard";
 const ADMIN_ENDPOINT = "/api/admin/leaderboard";
+const RANKS = [
+  { label: "X", min: 145 },
+  { label: "SS", min: 130 },
+  { label: "S", min: 115 },
+  { label: "A", min: 105 },
+  { label: "B", min: 95 },
+  { label: "C", min: 85 },
+  { label: "D", min: 0 },
+];
+
+function normalizeLeaderboardName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function getEntryWeight(entry) {
+  return Math.max(1, Number.parseInt(entry?.attemptCount, 10) || 1);
+}
+
+function getEntryBonusCount(entry) {
+  const explicitCount = Number.parseInt(entry?.bonusCount, 10);
+  if (Number.isFinite(explicitCount) && explicitCount >= 0) {
+    return explicitCount;
+  }
+
+  return entry?.bonus ? getEntryWeight(entry) : 0;
+}
+
+function getRankLabel(qi) {
+  return (RANKS.find((rank) => qi >= rank.min) || RANKS[RANKS.length - 1]).label;
+}
 
 function sortEntries(entries) {
   return [...entries]
@@ -47,13 +83,93 @@ function normalizeEntry(rawEntry) {
     royalHozuki: Boolean(rawEntry?.royalHozuki) || Boolean(secretProfile),
     secretRank: String(rawEntry?.secretRank || secretProfile?.key || ""),
     date: typeof rawEntry?.date === "string" ? rawEntry.date : new Date().toISOString(),
+    attemptCount: Math.max(1, Number.parseInt(rawEntry?.attemptCount, 10) || 1),
+    bonusCount: Math.max(
+      0,
+      Number.parseInt(rawEntry?.bonusCount, 10) || (rawEntry?.bonus ? 1 : 0)
+    ),
+    aggregateKey:
+      String(rawEntry?.aggregateKey || "").trim() || normalizeLeaderboardName(rawEntry?.name),
     questionIds: Array.isArray(rawEntry?.questionIds) ? rawEntry.questionIds.map((id) => String(id)) : [],
     answers: Array.isArray(rawEntry?.answers) ? rawEntry.answers : [],
   };
 }
 
+function aggregateEntries(entries) {
+  const groups = new Map();
+
+  (entries || []).map(normalizeEntry).forEach((entry) => {
+    const groupKey = entry.aggregateKey || normalizeLeaderboardName(entry.name) || entry.id;
+    const weight = getEntryWeight(entry);
+    const bonusCount = getEntryBonusCount(entry);
+    const current = groups.get(groupKey);
+
+    if (!current) {
+      groups.set(groupKey, {
+        aggregateKey: groupKey,
+        latestEntry: entry,
+        latestTimestamp: new Date(entry.date).getTime() || 0,
+        attemptCount: weight,
+        bonusCount,
+        qiTotal: entry.qi * weight,
+        scoreTotal: entry.score * weight,
+        normalScoreTotal: entry.normalScore * weight,
+        correctAnswersTotal: entry.correctAnswers * weight,
+        normalCorrectAnswersTotal: entry.normalCorrectAnswers * weight,
+        timeTotal: entry.time * weight,
+      });
+      return;
+    }
+
+    const entryTimestamp = new Date(entry.date).getTime() || 0;
+    if (entryTimestamp >= current.latestTimestamp) {
+      current.latestEntry = entry;
+      current.latestTimestamp = entryTimestamp;
+    }
+
+    current.attemptCount += weight;
+    current.bonusCount += bonusCount;
+    current.qiTotal += entry.qi * weight;
+    current.scoreTotal += entry.score * weight;
+    current.normalScoreTotal += entry.normalScore * weight;
+    current.correctAnswersTotal += entry.correctAnswers * weight;
+    current.normalCorrectAnswersTotal += entry.normalCorrectAnswers * weight;
+    current.timeTotal += entry.time * weight;
+  });
+
+  return Array.from(groups.values()).map((group) => {
+    const latestEntry = group.latestEntry;
+    const averageQi = Math.round(group.qiTotal / group.attemptCount);
+    const royalHozuki = Boolean(latestEntry.royalHozuki);
+    const secretRank = String(latestEntry.secretRank || "");
+
+    return normalizeEntry({
+      ...latestEntry,
+      id: latestEntry.id,
+      name: latestEntry.name,
+      qi: averageQi,
+      rank: royalHozuki && secretRank ? latestEntry.rank : getRankLabel(averageQi),
+      score: Math.round(group.scoreTotal / group.attemptCount),
+      normalScore: Math.round(group.normalScoreTotal / group.attemptCount),
+      correctAnswers: Math.round(group.correctAnswersTotal / group.attemptCount),
+      normalCorrectAnswers: Math.round(
+        group.normalCorrectAnswersTotal / group.attemptCount
+      ),
+      time: Math.round(group.timeTotal / group.attemptCount),
+      bonus: group.bonusCount > 0,
+      bonusCount: group.bonusCount,
+      attemptCount: group.attemptCount,
+      aggregateKey: group.aggregateKey,
+      royalHozuki,
+      secretRank,
+      questionIds: latestEntry.questionIds,
+      answers: latestEntry.answers,
+    });
+  });
+}
+
 function normalizeEntries(entries) {
-  return sortEntries((entries || []).map(normalizeEntry));
+  return sortEntries(aggregateEntries(entries));
 }
 
 function safeJsonParse(value, fallback) {
@@ -82,9 +198,10 @@ export function loadLocalLeaderboard() {
 }
 
 export function saveLocalEntry(entry) {
-  const entries = normalizeEntries([...loadLocalLeaderboard(), entry]);
-  localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(entries));
-  return entries;
+  const rawEntries = rawLocalEntries();
+  const nextEntries = sortEntries([...rawEntries, normalizeEntry(entry)]).slice(0, MAX_ENTRIES);
+  localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(nextEntries));
+  return normalizeEntries(nextEntries);
 }
 
 export function clearLocalLeaderboard() {
@@ -92,10 +209,26 @@ export function clearLocalLeaderboard() {
   return [];
 }
 
-export function deleteLocalEntry(id) {
-  const entries = normalizeEntries(loadLocalLeaderboard().filter((entry) => entry.id !== id));
-  localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(entries));
-  return entries;
+function rawLocalEntries() {
+  try {
+    const raw = localStorage.getItem(LOCAL_LEADERBOARD_KEY);
+    return (raw ? safeJsonParse(raw, []) : []).map(normalizeEntry);
+  } catch {
+    return [];
+  }
+}
+
+export function deleteLocalEntry(id, aggregateKey = "") {
+  const normalizedAggregateKey = String(aggregateKey || "").trim();
+  const filteredEntries = rawLocalEntries().filter((entry) => {
+    if (normalizedAggregateKey) {
+      return entry.aggregateKey !== normalizedAggregateKey;
+    }
+
+    return entry.id !== id;
+  });
+  localStorage.setItem(LOCAL_LEADERBOARD_KEY, JSON.stringify(filteredEntries));
+  return normalizeEntries(filteredEntries);
 }
 
 export { LOCAL_LEADERBOARD_KEY };
@@ -199,8 +332,18 @@ export async function clearRemoteLeaderboard(password) {
   };
 }
 
-export async function deleteRemoteLeaderboardEntry(id, password) {
-  const response = await fetch(`${ADMIN_ENDPOINT}?id=${encodeURIComponent(id)}`, {
+export async function deleteRemoteLeaderboardEntry(id, password, aggregateKey = "") {
+  const query = new URLSearchParams();
+
+  if (id) {
+    query.set("id", id);
+  }
+
+  if (aggregateKey) {
+    query.set("aggregateKey", aggregateKey);
+  }
+
+  const response = await fetch(`${ADMIN_ENDPOINT}?${query.toString()}`, {
     method: "DELETE",
     headers: {
       "x-admin-password": password,
