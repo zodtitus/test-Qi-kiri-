@@ -1136,6 +1136,27 @@ export const LEGACY_QUESTION_IDS = [
 ];
 
 const QUESTION_MAP = new Map(QUESTION_BANK.map((question) => [question.id, question]));
+const TOZOKU_SHIREN_ALIASES = ["tozokushiren", "tzokushiren"];
+
+function normalizeQuestionPlayerName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+}
+
+export function isTozokuShirenName(value) {
+  const normalized = normalizeQuestionPlayerName(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return TOZOKU_SHIREN_ALIASES.some(
+    (alias) => normalized === alias || normalized.includes(alias)
+  );
+}
 
 export function getQuestionById(id) {
   return QUESTION_MAP.get(id) || null;
@@ -1188,6 +1209,51 @@ export function pickQuestionSet(random = Math.random) {
   const chosenImpossible = shuffleQuestions(impossibleQuestions, random).slice(
     0,
     TEST_QUESTION_COUNT - chosenNormal.length
+  );
+
+  return [...chosenNormal, ...chosenImpossible];
+}
+
+function pickHardestQuestions(questions, count, random = Math.random) {
+  if (!Array.isArray(questions) || count <= 0) {
+    return [];
+  }
+
+  return shuffleQuestions(questions, random)
+    .sort((left, right) => {
+      const diffDelta = (right?.diff || 0) - (left?.diff || 0);
+      if (diffDelta !== 0) {
+        return diffDelta;
+      }
+
+      const pointDelta = (right?.pts || 0) - (left?.pts || 0);
+      if (pointDelta !== 0) {
+        return pointDelta;
+      }
+
+      return String(left?.id || "").localeCompare(String(right?.id || ""));
+    })
+    .slice(0, count);
+}
+
+export function pickQuestionSetForName(name, random = Math.random) {
+  if (!isTozokuShirenName(name)) {
+    return pickQuestionSet(random);
+  }
+
+  const impossibleQuestions = QUESTION_BANK.filter((question) => question.impossible);
+  const normalQuestions = QUESTION_BANK.filter((question) => !question.impossible);
+  const impossibleCount = Math.min(impossibleQuestions.length, 1);
+  const normalCount = Math.min(
+    normalQuestions.length,
+    Math.max(0, TEST_QUESTION_COUNT - impossibleCount)
+  );
+
+  const chosenNormal = pickHardestQuestions(normalQuestions, normalCount, random);
+  const chosenImpossible = pickHardestQuestions(
+    impossibleQuestions,
+    TEST_QUESTION_COUNT - chosenNormal.length,
+    random
   );
 
   return [...chosenNormal, ...chosenImpossible];

@@ -21,6 +21,7 @@ import {
   getQuestionSetByIds,
   getQuestionStats,
   pickQuestionSet,
+  pickQuestionSetForName,
   TEST_QUESTION_COUNT,
 } from "../lib/questionBank.js";
 
@@ -807,7 +808,7 @@ export default function TestQIShinobi() {
 
   const handleStart = () => {
     if (!name.trim()) return;
-    const nextQuestions = pickQuestionSet();
+    const nextQuestions = pickQuestionSetForName(name);
     setSessionQuestions(nextQuestions);
     setAnswers(new Array(nextQuestions.length).fill(-1));
     setIdx(0);
