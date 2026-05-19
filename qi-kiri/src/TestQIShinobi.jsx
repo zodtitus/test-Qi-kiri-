@@ -302,6 +302,10 @@ const TIME_PENALTY_AT_10_MIN = -35;
 const TIME_PENALTY_MIN = -50;
 const COPY_PENALTY_SECONDS = 60;
 const COPY_PENALTY_POINTS = 1;
+const RUSH_PENALTY_WINDOW_SEC = 5 * 60;
+const RUSH_SAFE_ACCURACY_RATIO = 0.78;
+const RUSH_LOW_ACCURACY_RATIO = 0.35;
+const RUSH_MAX_POINT_NERF_RATIO = 0.55;
 const SCREENSHOT_SHORTCUT_KEYS = new Set(["3", "4", "5", "s"]);
 
 const RANKS = [
@@ -480,14 +484,67 @@ function evaluateAnswers(answerList, questions) {
   };
 }
 
-function applyAttemptPenalties(evaluation, copyPenaltyCount = 0) {
+function computeRushPenalty(score, elapsedSec, maxScore) {
+  if (maxScore <= 0) {
+    return 0;
+  }
+
+  const safeElapsedSec = Math.max(0, Number.parseInt(elapsedSec, 10) || 0);
+
+  if (safeElapsedSec >= RUSH_PENALTY_WINDOW_SEC) {
+    return 0;
+  }
+
+  const accuracyRatio = Math.min(1, score / maxScore);
+
+  if (accuracyRatio >= RUSH_SAFE_ACCURACY_RATIO) {
+    return 0;
+  }
+
+  const speedPressure = (RUSH_PENALTY_WINDOW_SEC - safeElapsedSec) / RUSH_PENALTY_WINDOW_SEC;
+  const accuracyPressure = Math.min(
+    1,
+    Math.max(
+      0,
+      (RUSH_SAFE_ACCURACY_RATIO - accuracyRatio) /
+        (RUSH_SAFE_ACCURACY_RATIO - RUSH_LOW_ACCURACY_RATIO)
+    )
+  );
+  const penaltyRatio = RUSH_MAX_POINT_NERF_RATIO * speedPressure * accuracyPressure;
+
+  return Math.min(score, Math.round(score * penaltyRatio));
+}
+
+function applyAttemptPenalties(
+  evaluation,
+  { copyPenaltyCount = 0, elapsedSec = 0, normalMax = 0, totalMax = 0 } = {}
+) {
   const safePenaltyCount = Math.max(0, Number.parseInt(copyPenaltyCount, 10) || 0);
+  const scoreAfterCopyPenalty = Math.max(
+    0,
+    evaluation.totalScore - safePenaltyCount * COPY_PENALTY_POINTS
+  );
+  const normalScoreAfterCopyPenalty = Math.max(
+    0,
+    evaluation.normalScore - safePenaltyCount * COPY_PENALTY_POINTS
+  );
+  const rushPenalty = computeRushPenalty(
+    normalScoreAfterCopyPenalty,
+    elapsedSec,
+    normalMax
+  );
+  const totalRushPenalty = computeRushPenalty(
+    scoreAfterCopyPenalty,
+    elapsedSec,
+    totalMax
+  );
 
   return {
     ...evaluation,
     copyPenalties: safePenaltyCount,
-    normalScore: Math.max(0, evaluation.normalScore - safePenaltyCount * COPY_PENALTY_POINTS),
-    totalScore: Math.max(0, evaluation.totalScore - safePenaltyCount * COPY_PENALTY_POINTS),
+    rushPenalty,
+    normalScore: Math.max(0, normalScoreAfterCopyPenalty - rushPenalty),
+    totalScore: Math.max(0, scoreAfterCopyPenalty - totalRushPenalty),
   };
 }
 
@@ -507,7 +564,12 @@ function resolveAttemptOutcome(shinobiName, answerList, elapsedSec, questions, c
   const stats = getQuestionStats(normalizedQuestions);
   const evaluation = applyAttemptPenalties(
     evaluateAnswers(answerList, normalizedQuestions),
-    copyPenaltyCount
+    {
+      copyPenaltyCount,
+      elapsedSec,
+      normalMax: stats.normalMax,
+      totalMax: stats.totalMax,
+    }
   );
   const secretOverride = buildSecretHozukiOverride({
     name: shinobiName,
@@ -862,7 +924,12 @@ export default function TestQIShinobi() {
       : null;
   const currentEvaluation =
     resultOutcome ||
-    applyAttemptPenalties(evaluateAnswers(answers, sessionQuestions), copyPenaltyCount);
+    applyAttemptPenalties(evaluateAnswers(answers, sessionQuestions), {
+      copyPenaltyCount,
+      elapsedSec: screen === "test" ? elapsed : totalSec,
+      normalMax: sessionStats.normalMax,
+      totalMax: sessionStats.totalMax,
+    });
   const normalScore = currentEvaluation.normalScore;
   const bonusEarned = currentEvaluation.bonusEarned ?? currentEvaluation.bonus;
   const totalScore = currentEvaluation.score ?? currentEvaluation.totalScore;
