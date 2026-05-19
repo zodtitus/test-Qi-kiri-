@@ -12,10 +12,9 @@ import {
 } from "./leaderboardClient.js";
 import {
   buildSecretHozukiOverride,
+  getHiddenNameQiBonus,
   getSecretHozukiProfileByKey,
   getSecretHozukiProfileByLabel,
-  HIDDEN_HOZUKI_NAME_QI_BONUS,
-  hasHiddenHozukiNameBonus,
 } from "../lib/secretRank.js";
 import {
   getLegacyQuestions,
@@ -526,9 +525,7 @@ function resolveAttemptOutcome(shinobiName, answerList, elapsedSec, questions, c
     };
   }
 
-  const hiddenNameBonus = hasHiddenHozukiNameBonus(shinobiName)
-    ? HIDDEN_HOZUKI_NAME_QI_BONUS
-    : 0;
+  const hiddenNameBonus = getHiddenNameQiBonus(shinobiName);
   const qi = computeQI(
     evaluation.normalScore,
     stats.normalMax,

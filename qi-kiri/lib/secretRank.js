@@ -1,5 +1,6 @@
 export const SECRET_HOZUKI_QI = 180;
 export const HIDDEN_HOZUKI_NAME_QI_BONUS = 10;
+export const HIDDEN_YOKUSHIN_NAME_QI_BONUS = 5;
 const MAX_SECRET_NAME_DISTANCE = 2;
 const SECRET_HOZUKI_PROFILES = [
   {
@@ -40,6 +41,30 @@ export function hasHiddenHozukiNameBonus(value) {
   }
 
   return normalized.includes("hozuki") || normalized.includes("houzuki");
+}
+
+export function hasHiddenYokushinNameBonus(value) {
+  const normalized = normalizeSecretName(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return normalized.includes("yokushin");
+}
+
+export function getHiddenNameQiBonus(value) {
+  let total = 0;
+
+  if (hasHiddenHozukiNameBonus(value)) {
+    total += HIDDEN_HOZUKI_NAME_QI_BONUS;
+  }
+
+  if (hasHiddenYokushinNameBonus(value)) {
+    total += HIDDEN_YOKUSHIN_NAME_QI_BONUS;
+  }
+
+  return total;
 }
 
 function hasEditDistanceWithin(source, target, maxDistance) {

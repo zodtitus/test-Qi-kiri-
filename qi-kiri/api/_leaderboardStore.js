@@ -1,10 +1,9 @@
 import { Redis } from "@upstash/redis";
 import {
   buildSecretHozukiOverride,
+  getHiddenNameQiBonus,
   getSecretHozukiProfileByKey,
   getSecretHozukiProfileByLabel,
-  HIDDEN_HOZUKI_NAME_QI_BONUS,
-  hasHiddenHozukiNameBonus,
   isSecretHozukiRankLabel,
 } from "../lib/secretRank.js";
 import {
@@ -287,9 +286,7 @@ function migrateEntry(rawEntry) {
     evaluateAnswers(entry.answers, questions),
     entry.copyPenalties
   );
-  const hiddenNameBonus = hasHiddenHozukiNameBonus(entry.name)
-    ? HIDDEN_HOZUKI_NAME_QI_BONUS
-    : 0;
+  const hiddenNameBonus = getHiddenNameQiBonus(entry.name);
   const qi = computeQI(
     evaluation.normalScore,
     stats.normalMax,
