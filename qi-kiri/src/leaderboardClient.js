@@ -1,3 +1,5 @@
+import { isSecretHozukiRankLabel } from "../lib/secretRank.js";
+
 const LOCAL_LEADERBOARD_KEY = "kiri-qi-leaderboard";
 const MAX_ENTRIES = 100;
 const PUBLIC_ENDPOINT = "/api/leaderboard";
@@ -6,6 +8,10 @@ const ADMIN_ENDPOINT = "/api/admin/leaderboard";
 function sortEntries(entries) {
   return [...entries]
     .sort((left, right) => {
+      if (Boolean(right.royalHozuki) !== Boolean(left.royalHozuki)) {
+        return Number(Boolean(right.royalHozuki)) - Number(Boolean(left.royalHozuki));
+      }
+
       if (right.qi !== left.qi) {
         return right.qi - left.qi;
       }
@@ -31,6 +37,7 @@ function normalizeEntry(rawEntry) {
     normalCorrectAnswers: Number.parseInt(rawEntry?.normalCorrectAnswers, 10) || 0,
     time: Number.parseInt(rawEntry?.time, 10) || 0,
     bonus: Boolean(rawEntry?.bonus),
+    royalHozuki: Boolean(rawEntry?.royalHozuki) || isSecretHozukiRankLabel(rawEntry?.rank),
     date: typeof rawEntry?.date === "string" ? rawEntry.date : new Date().toISOString(),
     answers: Array.isArray(rawEntry?.answers) ? rawEntry.answers : [],
   };

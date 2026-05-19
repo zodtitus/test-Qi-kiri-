@@ -1,4 +1,8 @@
 import { Redis } from "@upstash/redis";
+import {
+  buildSecretHozukiOverride,
+  isSecretHozukiRankLabel,
+} from "../lib/secretRank.js";
 
 const LEADERBOARD_KEY = "kiri:leaderboard:v2";
 const MAX_ENTRIES = 100;
@@ -28,6 +32,7 @@ const QUESTION_META = [
   { pts: 20, answer: 3, impossible: true },
 ];
 const NORMAL_MAX = QUESTION_META.filter((question) => !question.impossible).reduce((sum, question) => sum + question.pts, 0);
+const TOTAL_MAX = QUESTION_META.reduce((sum, question) => sum + question.pts, 0);
 const QI_BASE = 60;
 const ANSWER_QI_WEIGHT = 90;
 const IMPOSSIBLE_INDEX = QUESTION_META.findIndex((question) => question.impossible);
@@ -171,13 +176,14 @@ function sanitizeEntry(rawEntry) {
     id: String(rawEntry?.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
     name: String(rawEntry?.name || "Shinobi inconnu").trim().slice(0, 24) || "Shinobi inconnu",
     qi: Number.parseInt(rawEntry?.qi, 10) || 0,
-    rank: String(rawEntry?.rank || "D").slice(0, 4),
+    rank: String(rawEntry?.rank || "D").trim().slice(0, 64),
     score: Number.parseInt(rawEntry?.score, 10) || 0,
     normalScore: Number.parseInt(rawEntry?.normalScore, 10) || 0,
     correctAnswers: Number.parseInt(rawEntry?.correctAnswers, 10) || 0,
     normalCorrectAnswers: Number.parseInt(rawEntry?.normalCorrectAnswers, 10) || 0,
     time: Number.parseInt(rawEntry?.time, 10) || 0,
     bonus: Boolean(rawEntry?.bonus),
+    royalHozuki: Boolean(rawEntry?.royalHozuki) || isSecretHozukiRankLabel(rawEntry?.rank),
     date: safeDate,
     answers: sanitizeAnswers(rawEntry?.answers),
   };
@@ -190,6 +196,19 @@ function stripAnswers(entry) {
 
 function migrateEntry(rawEntry) {
   const entry = sanitizeEntry(rawEntry);
+  const secretOverride = buildSecretHozukiOverride({
+    name: entry.name,
+    normalMax: NORMAL_MAX,
+    totalMax: TOTAL_MAX,
+    questionMeta: QUESTION_META,
+  });
+
+  if (secretOverride) {
+    return {
+      ...entry,
+      ...secretOverride,
+    };
+  }
 
   if (!Array.isArray(entry.answers) || entry.answers.length === 0) {
     return entry;
@@ -207,12 +226,17 @@ function migrateEntry(rawEntry) {
     correctAnswers: evaluation.correctAnswers,
     normalCorrectAnswers: evaluation.normalCorrectAnswers,
     bonus: evaluation.bonusEarned,
+    royalHozuki: false,
     answers: evaluation.answersSnapshot,
   };
 }
 
 function sortEntries(entries) {
   return [...entries].sort((left, right) => {
+    if (Boolean(right.royalHozuki) !== Boolean(left.royalHozuki)) {
+      return Number(Boolean(right.royalHozuki)) - Number(Boolean(left.royalHozuki));
+    }
+
     if (right.qi !== left.qi) {
       return right.qi - left.qi;
     }
@@ -310,7 +334,7 @@ export async function saveLeaderboardEntry(rawEntry) {
     return { configured: false, entries: [] };
   }
 
-  const entry = sanitizeEntry(rawEntry);
+  const entry = migrateEntry(rawEntry);
   const currentEntries = await readLeaderboard(redis);
   const nextEntries = await writeLeaderboard(redis, [entry, ...currentEntries.filter((item) => item.id !== entry.id)]);
 

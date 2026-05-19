@@ -10,6 +10,11 @@ import {
   loadLocalLeaderboard,
   submitLeaderboardEntry,
 } from "./leaderboardClient.js";
+import {
+  buildSecretHozukiOverride,
+  isSecretHozukiRankLabel,
+  SECRET_HOZUKI_RANK_LABEL,
+} from "../lib/secretRank.js";
 
 /**
  * L'Épreuve du Mizukage — Test de QI shinobi (Kirigakure)
@@ -297,12 +302,29 @@ const RANKS = [
   { label: "C", min: 85, color: "#D88A60", bg: "rgba(216,138,96,0.12)", border: "#D88A60", desc: "Genin en formation", flavor: "« La surface t'aveugle encore. Descends plus profond. »" },
   { label: "D", min: 0, color: "#8090A0", bg: "rgba(128,144,160,0.12)", border: "#8090A0", desc: "Académicien débutant", flavor: "« La Brume te reste opaque. Reviens méditer. »" },
 ];
+const SECRET_HOZUKI_RANK = {
+  label: SECRET_HOZUKI_RANK_LABEL,
+  shortLabel: "Princesse",
+  color: "#F8E6A0",
+  bg: "linear-gradient(135deg, rgba(240,208,96,0.16), rgba(127,212,192,0.14))",
+  border: "#F8E6A0",
+  desc: "Princesse du clan Hozuki",
+  flavor: "« Les courants eux-mêmes s'inclinent devant ton nom. »",
+};
 
 const DIFF_COLORS = ["", "#7FD4C0", "#C8A04A", "#D88A60", "#E06070", "#F0D060"];
 const DIFF_LABELS = ["", "Facile", "Moyen", "Difficile", "Expert", "Impossible"];
 
 function getRank(qi) {
   return RANKS.find((r) => qi >= r.min) || RANKS[RANKS.length - 1];
+}
+
+function getRankVisual(rankLabel, royalHozuki = false) {
+  if (royalHozuki || isSecretHozukiRankLabel(rankLabel)) {
+    return SECRET_HOZUKI_RANK;
+  }
+
+  return RANKS.find((rank) => rank.label === rankLabel) || RANKS[RANKS.length - 1];
 }
 
 function computeTimeAdjustment(elapsedSec) {
@@ -375,6 +397,39 @@ function computeQI(score, elapsedSec, bonusEarned) {
   const timeBonus = computeTimeAdjustment(elapsedSec) * baseRatio;
   const secretBonus = bonusEarned ? IMPOSSIBLE_QI_BONUS : 0;
   return Math.max(60, Math.min(180, Math.round(base + timeBonus + secretBonus)));
+}
+
+function resolveAttemptOutcome(shinobiName, answerList, elapsedSec) {
+  const evaluation = evaluateAnswers(answerList);
+  const secretOverride = buildSecretHozukiOverride({
+    name: shinobiName,
+    normalMax: NORMAL_MAX,
+    totalMax: TOTAL_MAX,
+    questionMeta: QUESTIONS,
+  });
+
+  if (secretOverride) {
+    return {
+      ...secretOverride,
+      rank: SECRET_HOZUKI_RANK,
+      bonusEarned: secretOverride.bonus,
+    };
+  }
+
+  const qi = computeQI(evaluation.normalScore, elapsedSec, evaluation.bonusEarned);
+
+  return {
+    qi,
+    rank: getRank(qi),
+    score: evaluation.totalScore,
+    normalScore: evaluation.normalScore,
+    correctAnswers: evaluation.correctAnswers,
+    normalCorrectAnswers: evaluation.normalCorrectAnswers,
+    bonus: evaluation.bonusEarned,
+    bonusEarned: evaluation.bonusEarned,
+    answers: evaluation.answersSnapshot,
+    royalHozuki: false,
+  };
 }
 
 function exportCSV(entries) {
@@ -488,23 +543,22 @@ export default function TestQIShinobi() {
 
     try {
       const totalSec = Math.round((finalEnd - startTime) / 1000);
-      const evaluation = evaluateAnswers(answers);
-      const qi = computeQI(evaluation.normalScore, totalSec, evaluation.bonusEarned);
-      const rank = getRank(qi);
+      const outcome = resolveAttemptOutcome(name, answers, totalSec);
       const entryId = Date.now() + "_" + Math.random().toString(36).slice(2, 8);
       const entry = {
         id: entryId,
         name: name.trim().slice(0, 24),
-        qi,
-        rank: rank.label,
-        score: evaluation.totalScore,
-        normalScore: evaluation.normalScore,
-        correctAnswers: evaluation.correctAnswers,
-        normalCorrectAnswers: evaluation.normalCorrectAnswers,
+        qi: outcome.qi,
+        rank: outcome.rank.label,
+        score: outcome.score,
+        normalScore: outcome.normalScore,
+        correctAnswers: outcome.correctAnswers,
+        normalCorrectAnswers: outcome.normalCorrectAnswers,
         time: totalSec,
-        bonus: evaluation.bonusEarned,
+        bonus: outcome.bonus,
+        royalHozuki: outcome.royalHozuki,
         date: new Date().toISOString(),
-        answers: evaluation.answersSnapshot, // sauvegarde détaillée pour l'admin
+        answers: outcome.answers, // sauvegarde détaillée pour l'admin
       };
 
       const result = await submitLeaderboardEntry(entry);
@@ -600,13 +654,14 @@ export default function TestQIShinobi() {
     }
   };
 
-  const currentEvaluation = evaluateAnswers(answers);
-  const normalScore = currentEvaluation.normalScore;
-  const bonusEarned = currentEvaluation.bonusEarned;
-  const totalScore = currentEvaluation.totalScore;
   const totalSec = Math.round((endTime - startTime) / 1000);
-  const qi = screen === "results" ? computeQI(normalScore, totalSec, bonusEarned) : 0;
-  const rank = screen === "results" ? getRank(qi) : null;
+  const resultOutcome = screen === "results" ? resolveAttemptOutcome(name, answers, totalSec) : null;
+  const currentEvaluation = resultOutcome || evaluateAnswers(answers);
+  const normalScore = currentEvaluation.normalScore;
+  const bonusEarned = currentEvaluation.bonusEarned ?? currentEvaluation.bonus;
+  const totalScore = currentEvaluation.score ?? currentEvaluation.totalScore;
+  const qi = resultOutcome?.qi ?? 0;
+  const rank = resultOutcome?.rank ?? null;
 
   const currentQ = QUESTIONS[idx];
   const isImpossible = currentQ?.impossible;
@@ -800,7 +855,7 @@ export default function TestQIShinobi() {
               ) : (
                 <div>
                   {leaderboard.map((e, i) => {
-                    const r = RANKS.find((x) => x.label === e.rank) || RANKS[RANKS.length - 1];
+                    const r = getRankVisual(e.rank, e.royalHozuki);
                     const isExpanded = expandedRow === e.id;
                     const correctCount =
                       typeof e.correctAnswers === "number"
@@ -828,14 +883,21 @@ export default function TestQIShinobi() {
                             {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
                           </span>
                           <span style={{ flex: 1, color: "#E8D8B8", fontWeight: 500 }}>
-                            {e.name}
+                            <span>{e.name}</span>
+                            {e.royalHozuki && (
+                              <span style={{ display: "block", fontSize: 11, color: "#F8E6A0", marginTop: 2 }}>
+                                {SECRET_HOZUKI_RANK_LABEL}
+                              </span>
+                            )}
                             {e.bonus && <span style={{ marginLeft: 6, fontSize: 11, color: "#F0D060" }}>⚜</span>}
                           </span>
                           <span style={{
                             padding: "2px 8px", borderRadius: 4,
                             background: r.bg, color: r.color,
-                            fontSize: 12, fontWeight: 600, letterSpacing: 1,
-                          }}>{e.rank}</span>
+                            fontSize: e.royalHozuki ? 10 : 12,
+                            fontWeight: 600,
+                            letterSpacing: e.royalHozuki ? 0.4 : 1,
+                          }}>{e.royalHozuki ? r.shortLabel : e.rank}</span>
                           <span style={{ color: r.color, fontWeight: 600, minWidth: 36, textAlign: "right" }}>{e.qi}</span>
                           <span style={{ color: "#8090A0", fontSize: 12, minWidth: 30, textAlign: "right" }}>
                             {correctCount}/{QUESTIONS.length}
@@ -849,6 +911,7 @@ export default function TestQIShinobi() {
                         {isExpanded && (
                           <div style={{ padding: "16px 12px 20px", background: "rgba(0,0,0,0.15)", borderRadius: 6, marginTop: 4, marginBottom: 8 }}>
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8, marginBottom: 16, fontSize: 12 }}>
+                              {e.royalHozuki && <DetailItem label="Titre" value={SECRET_HOZUKI_RANK_LABEL} color="#F8E6A0" />}
                               <DetailItem label="Score" value={`${e.score}/${TOTAL_MAX}`} />
                               <DetailItem label="Bonnes réponses" value={`${correctCount}/${QUESTIONS.length}`} />
                               <DetailItem label="Classiques" value={`${normalCorrectCount}/${NORMAL_QUESTION_COUNT}`} />
@@ -1017,7 +1080,9 @@ export default function TestQIShinobi() {
         {screen === "results" && rank && (
           <div className="qi-fade">
             <div style={{ ...styles.card, textAlign: "center", borderColor: `${rank.border}66` }}>
-              <div style={styles.eyebrow}>VERDICT DE LA BRUME · {name}</div>
+              <div style={styles.eyebrow}>
+                {currentEvaluation.royalHozuki ? "VERDICT ROYAL DE LA BRUME" : "VERDICT DE LA BRUME"} · {name}
+              </div>
               <div className="qi-pop" style={{
                 fontSize: 64, fontWeight: 700, color: rank.color, lineHeight: 1, margin: "12px 0",
                 textShadow: `0 0 30px ${rank.color}66`,
@@ -1029,7 +1094,12 @@ export default function TestQIShinobi() {
                 background: rank.bg, border: `1.5px solid ${rank.border}`,
                 borderRadius: 6, marginBottom: 12,
               }}>
-                <span style={{ fontSize: 32, fontWeight: 700, letterSpacing: 4, color: rank.color }}>
+                <span style={{
+                  fontSize: currentEvaluation.royalHozuki ? 20 : 32,
+                  fontWeight: 700,
+                  letterSpacing: currentEvaluation.royalHozuki ? 1 : 4,
+                  color: rank.color,
+                }}>
                   {rank.label}
                 </span>
               </div>
@@ -1038,7 +1108,15 @@ export default function TestQIShinobi() {
               </div>
               <div style={{ ...styles.quote, fontSize: 13, margin: "8px 0 0" }}>{rank.flavor}</div>
 
-              {bonusEarned && (
+              {currentEvaluation.royalHozuki ? (
+                <div style={{
+                  marginTop: 16, padding: "10px 16px",
+                  background: "rgba(248,230,160,0.12)", border: "1px solid rgba(248,230,160,0.4)",
+                  borderRadius: 6, fontSize: 13, color: "#F8E6A0",
+                }}>
+                  👑 Les eaux reconnaissent la <strong>{SECRET_HOZUKI_RANK_LABEL}</strong>. Ton verdict atteint automatiquement le maximum absolu, sans dépendre du temps ni des réponses.
+                </div>
+              ) : bonusEarned && (
                 <div style={{
                   marginTop: 16, padding: "10px 16px",
                   background: "rgba(240,208,96,0.12)", border: "1px solid rgba(240,208,96,0.4)",
@@ -1136,7 +1214,7 @@ function LeaderboardTable({ entries, highlightId }) {
         </thead>
         <tbody>
           {entries.map((e, i) => {
-            const rank = RANKS.find((r) => r.label === e.rank) || RANKS[RANKS.length - 1];
+            const rank = getRankVisual(e.rank, e.royalHozuki);
             const isMe = e.id === highlightId;
             return (
               <tr key={e.id || i} style={{ background: isMe ? "rgba(127,212,192,0.08)" : "transparent" }}>
@@ -1147,17 +1225,24 @@ function LeaderboardTable({ entries, highlightId }) {
                 </td>
                 <td style={styles.lbTd}>
                   <span style={{ color: isMe ? "#7FD4C0" : "#E8D8B8", fontWeight: isMe ? 600 : 400 }}>
-                    {e.name}
+                    <span>{e.name}</span>
                     {isMe && <span style={{ marginLeft: 6, fontSize: 10, color: "#7FD4C0" }}>← toi</span>}
                     {e.bonus && <span style={{ marginLeft: 6, fontSize: 11, color: "#F0D060" }}>⚜</span>}
                   </span>
+                  {e.royalHozuki && (
+                    <div style={{ fontSize: 10, color: "#F8E6A0", marginTop: 2 }}>
+                      {SECRET_HOZUKI_RANK_LABEL}
+                    </div>
+                  )}
                 </td>
                 <td style={{ ...styles.lbTd, textAlign: "center" }}>
                   <span style={{
                     display: "inline-block", padding: "2px 8px", borderRadius: 4,
                     background: rank.bg, color: rank.color,
-                    fontSize: 12, fontWeight: 600, letterSpacing: 1,
-                  }}>{e.rank}</span>
+                    fontSize: e.royalHozuki ? 10 : 12,
+                    fontWeight: 600,
+                    letterSpacing: e.royalHozuki ? 0.4 : 1,
+                  }}>{e.royalHozuki ? rank.shortLabel : e.rank}</span>
                 </td>
                 <td style={{ ...styles.lbTd, textAlign: "right", fontWeight: 600, color: rank.color }}>{e.qi}</td>
                 <td style={{ ...styles.lbTd, textAlign: "right", color: "#8090A0", fontVariantNumeric: "tabular-nums" }}>
