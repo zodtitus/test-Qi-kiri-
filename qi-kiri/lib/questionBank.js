@@ -972,7 +972,7 @@ export const QUESTION_BANK = [
     diff: 4,
     pts: 10,
     impossible: true,
-    q: "Vous êtes face à trois coffres : un en Or, un en Cuivre et un en Acier. L'un d'eux contient un éclat de lune inestimable, les deux autres sont vides. Sur chaque coffre est gravée une phrase, mais attention, une seule des trois affirmations suivantes est VRAIE.\n\nCoffre en Or : \"L'éclat de lune est dans ce coffre.\"\n\nCoffre en Argent : \"L'éclat de lune n'est pas dans ce coffre.\"\n\nCoffre en Plomb : \"L'éclat de lune n'est pas dans le coffre en Or.\"\n\nOù se trouve L'éclat de lune ?",
+    q: "Vous êtes face à trois coffres : un en Or, un en Cuivre et un en Acier. L'un d'eux contient un éclat de lune inestimable, les deux autres sont vides. Sur chaque coffre est gravée une phrase, mais attention, une seule des trois affirmations suivantes est VRAIE.\n\nCoffre en Or : \"L'éclat de lune est dans ce coffre.\"\n\nCoffre en Argent : \"L'éclat de lune n'est pas dans ce coffre.\"\n\nCoffre en Cuivre : \"L'éclat de lune n'est pas dans le coffre en Or.\"\n\nOù se trouve L'éclat de lune ?",
     choices: [
       "Dans le coffre en Or",
       "Dans le coffre en Cuivre",
