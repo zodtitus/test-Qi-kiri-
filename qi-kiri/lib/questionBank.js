@@ -966,6 +966,15 @@ export const QUESTION_BANK = [
     answer: 2,
   },
   {
+    id: "extra-trois-sabres-plus-leger",
+    section: "Logique",
+    diff: 1,
+    pts: 1,
+    q: "Trois sabres sont posés devant Tengetsu.\n\nLe premier est plus lourd que le second.\nLe second est plus léger que le troisième.\nLe troisième est plus lourd que le premier.\n\nQuel sabre est le plus léger ?",
+    choices: ["Le premier", "Le second", "Le troisième", "Impossible à savoir"],
+    answer: 1,
+  },
+  {
     id: "extra-collier-saphirs-bourse",
     section: "Marché Noir de Kiri",
     diff: 2,
