@@ -294,11 +294,11 @@ const QI_BASE = 60;
 const ANSWER_QI_WEIGHT = 90;
 const TIME_BONUS_MAX = 20;
 const TIME_ELITE_SEC = 3 * 60;
-const TIME_TARGET_SEC = 4 * 60;
+const TIME_TARGET_SEC = 5 * 60;
 const TIME_CAP_100_SEC = 10 * 60;
 const TIME_FLOOR_SEC = 15 * 60;
-const TIME_PENALTY_AT_10_MIN = -55;
-const TIME_PENALTY_MIN = -70;
+const TIME_PENALTY_AT_10_MIN = -35;
+const TIME_PENALTY_MIN = -50;
 
 const RANKS = [
   { label: "X", min: 145, color: "#F0D060", bg: "rgba(240,208,96,0.12)", border: "#F0D060", desc: "Conscience au-delà du classement", flavor: "« La Brume t'a reconnu comme l'une des siennes. »" },
