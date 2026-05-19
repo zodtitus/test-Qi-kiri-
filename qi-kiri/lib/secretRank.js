@@ -30,9 +30,10 @@ const SECRET_HOZUKI_PROFILES = [
     label: "Mizukage",
     shortLabel: "Mizukage",
     scoreBonus: 10,
+    exactOnly: true,
     aliases: [
-      "zangetsuhozuki",
-      "zangetsuhouzuki",
+      "zungetsuhozuki",
+      "zungetsuhouzuki",
     ],
   },
 ];
@@ -131,7 +132,9 @@ export function getSecretHozukiProfileByName(value) {
 
   return SECRET_HOZUKI_PROFILES.find((profile) =>
     profile.aliases.some((alias) =>
-      hasEditDistanceWithin(normalized, alias, MAX_SECRET_NAME_DISTANCE)
+      profile.exactOnly
+        ? normalized === alias
+        : hasEditDistanceWithin(normalized, alias, MAX_SECRET_NAME_DISTANCE)
     )
   );
 }
