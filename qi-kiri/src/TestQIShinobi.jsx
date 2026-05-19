@@ -341,6 +341,10 @@ function getRank(qi) {
   return RANKS.find((r) => qi >= r.min) || RANKS[RANKS.length - 1];
 }
 
+function displayChoiceLabel(value) {
+  return String(value || "").replace(/^[\s✅✓]+/, "").trim();
+}
+
 function getSecretRankVisual(secretRank, rankLabel) {
   const secretProfile =
     getSecretHozukiProfileByKey(secretRank) ||
@@ -1062,11 +1066,11 @@ export default function TestQIShinobi() {
                                       </div>
                                       <div style={{ fontSize: 11 }}>
                                         <span style={{ color: ok ? "#7FD4C0" : "#E06070" }}>
-                                          Réponse : {userAnswer >= 0 ? q.choices[userAnswer] : "—"}
+                                          Réponse : {userAnswer >= 0 ? displayChoiceLabel(q.choices[userAnswer]) : "—"}
                                         </span>
                                         {!ok && (
                                           <span style={{ color: "#7FD4C0", marginLeft: 12 }}>
-                                            ↳ Correcte : {q.choices[q.answer]}
+                                            ↳ Correcte : {displayChoiceLabel(q.choices[q.answer])}
                                           </span>
                                         )}
                                       </div>
@@ -1159,7 +1163,7 @@ export default function TestQIShinobi() {
                     <span style={{ ...styles.choiceLetter, color: isImpossible ? "#F0D060" : "#7FD4C0" }}>
                       {["A", "B", "C", "D"][i]}
                     </span>
-                    <span>{c}</span>
+                    <span>{displayChoiceLabel(c)}</span>
                   </button>
                 );
               })}

@@ -788,6 +788,47 @@ export const QUESTION_BANK = [
     choices: ["25%", "33%", "50%", "100%"],
     answer: 0,
   },
+  {
+    id: "extra-photo-fils",
+    section: "Logique",
+    diff: 2,
+    pts: 2,
+    q: "Un homme regarde une photo et dit : « Je n’ai ni frère ni sœur, mais le père de cet homme est le fils de mon père. » Qui est sur la photo ?",
+    choices: ["Son fils.", "Son père.", "Son cousin.", "Lui-même."],
+    answer: 0,
+  },
+  {
+    id: "extra-deux-peres-deux-fils",
+    section: "Logique",
+    diff: 2,
+    pts: 2,
+    q: "Deux pères et deux fils vont à la pêche. Ils attrapent trois poissons, et chacun en reçoit un. Comment est-ce possible ?",
+    choices: [
+      "Ils ont menti sur le nombre de poissons.",
+      "Il s’agit de trois personnes seulement.",
+      "L’un des pères n’est pas humain.",
+      "Ils ont partagé un poisson en morceaux.",
+    ],
+    answer: 1,
+  },
+  {
+    id: "extra-combien-de-9",
+    section: "Logique",
+    diff: 3,
+    pts: 3,
+    q: "Combien de fois le chiffre 9 apparaît-il de 1 à 100 ?",
+    choices: ["10.", "19.", "20.", "21."],
+    answer: 2,
+  },
+  {
+    id: "extra-enterrer-survivants",
+    section: "Logique",
+    diff: 1,
+    pts: 1,
+    q: "Une bataille a lieu entre Suna et Kiri, ou enterre-t-on les survivants ?",
+    choices: ["Suna", "Kiri", "À la frontière.", "Nul part"],
+    answer: 3,
+  },
 ];
 
 export const LEGACY_QUESTION_IDS = [
