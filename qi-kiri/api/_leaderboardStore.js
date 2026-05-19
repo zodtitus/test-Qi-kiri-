@@ -53,6 +53,7 @@ const TIME_CAP_100_SEC = 10 * 60;
 const TIME_FLOOR_SEC = 15 * 60;
 const TIME_PENALTY_AT_10_MIN = -35;
 const TIME_PENALTY_MIN = -50;
+const COPY_PENALTY_POINTS = 1;
 const RANKS = [
   { label: "X", min: 145 },
   { label: "SS", min: 130 },
@@ -196,6 +197,17 @@ function evaluateAnswers(answerList, questions) {
   };
 }
 
+function applyAttemptPenalties(evaluation, copyPenaltyCount = 0) {
+  const safePenaltyCount = Math.max(0, Number.parseInt(copyPenaltyCount, 10) || 0);
+
+  return {
+    ...evaluation,
+    copyPenalties: safePenaltyCount,
+    normalScore: Math.max(0, evaluation.normalScore - safePenaltyCount * COPY_PENALTY_POINTS),
+    totalScore: Math.max(0, evaluation.totalScore - safePenaltyCount * COPY_PENALTY_POINTS),
+  };
+}
+
 function computeQI(score, normalMax, elapsedSec, bonusEarned, hiddenNameBonus = 0) {
   const baseRatio = normalMax > 0 ? Math.min(1, score / normalMax) : 0;
   const base = QI_BASE + baseRatio * ANSWER_QI_WEIGHT;
@@ -224,6 +236,7 @@ function sanitizeEntry(rawEntry) {
     normalCorrectAnswers: Number.parseInt(rawEntry?.normalCorrectAnswers, 10) || 0,
     time: Number.parseInt(rawEntry?.time, 10) || 0,
     bonus: Boolean(rawEntry?.bonus),
+    copyPenalties: Math.max(0, Number.parseInt(rawEntry?.copyPenalties, 10) || 0),
     royalHozuki: Boolean(rawEntry?.royalHozuki) || Boolean(secretProfile),
     secretRank: String(rawEntry?.secretRank || secretProfile?.key || ""),
     date: safeDate,
@@ -233,7 +246,7 @@ function sanitizeEntry(rawEntry) {
 }
 
 function stripAnswers(entry) {
-  const { answers, questionIds, ...publicEntry } = entry;
+  const { answers, questionIds, copyPenalties, ...publicEntry } = entry;
   return publicEntry;
 }
 
@@ -270,7 +283,10 @@ function migrateEntry(rawEntry) {
     return entry;
   }
 
-  const evaluation = evaluateAnswers(entry.answers, questions);
+  const evaluation = applyAttemptPenalties(
+    evaluateAnswers(entry.answers, questions),
+    entry.copyPenalties
+  );
   const hiddenNameBonus = hasHiddenHozukiNameBonus(entry.name)
     ? HIDDEN_HOZUKI_NAME_QI_BONUS
     : 0;
@@ -291,6 +307,7 @@ function migrateEntry(rawEntry) {
     correctAnswers: evaluation.correctAnswers,
     normalCorrectAnswers: evaluation.normalCorrectAnswers,
     bonus: evaluation.bonusEarned,
+    copyPenalties: evaluation.copyPenalties,
     royalHozuki: false,
     secretRank: "",
     questionIds: questions.map((question) => question.id),

@@ -302,6 +302,7 @@ const TIME_FLOOR_SEC = 15 * 60;
 const TIME_PENALTY_AT_10_MIN = -35;
 const TIME_PENALTY_MIN = -50;
 const COPY_PENALTY_SECONDS = 60;
+const COPY_PENALTY_POINTS = 1;
 
 const RANKS = [
   { label: "X", min: 145, color: "#F0D060", bg: "rgba(240,208,96,0.12)", border: "#F0D060", desc: "Conscience au-delà du classement", flavor: "« La Brume t'a reconnu comme l'une des siennes. »" },
@@ -464,6 +465,17 @@ function evaluateAnswers(answerList, questions) {
   };
 }
 
+function applyAttemptPenalties(evaluation, copyPenaltyCount = 0) {
+  const safePenaltyCount = Math.max(0, Number.parseInt(copyPenaltyCount, 10) || 0);
+
+  return {
+    ...evaluation,
+    copyPenalties: safePenaltyCount,
+    normalScore: Math.max(0, evaluation.normalScore - safePenaltyCount * COPY_PENALTY_POINTS),
+    totalScore: Math.max(0, evaluation.totalScore - safePenaltyCount * COPY_PENALTY_POINTS),
+  };
+}
+
 function computeQI(score, normalMax, elapsedSec, bonusEarned, hiddenNameBonus = 0) {
   const baseRatio = normalMax > 0 ? Math.min(1, score / normalMax) : 0;
   const base = QI_BASE + baseRatio * ANSWER_QI_WEIGHT;
@@ -475,10 +487,13 @@ function computeQI(score, normalMax, elapsedSec, bonusEarned, hiddenNameBonus = 
   );
 }
 
-function resolveAttemptOutcome(shinobiName, answerList, elapsedSec, questions) {
+function resolveAttemptOutcome(shinobiName, answerList, elapsedSec, questions, copyPenaltyCount = 0) {
   const normalizedQuestions = Array.isArray(questions) ? questions : [];
   const stats = getQuestionStats(normalizedQuestions);
-  const evaluation = evaluateAnswers(answerList, normalizedQuestions);
+  const evaluation = applyAttemptPenalties(
+    evaluateAnswers(answerList, normalizedQuestions),
+    copyPenaltyCount
+  );
   const secretOverride = buildSecretHozukiOverride({
     name: shinobiName,
     normalMax: stats.normalMax,
@@ -515,6 +530,7 @@ function resolveAttemptOutcome(shinobiName, answerList, elapsedSec, questions) {
     normalCorrectAnswers: evaluation.normalCorrectAnswers,
     bonus: evaluation.bonusEarned,
     bonusEarned: evaluation.bonusEarned,
+    copyPenalties: evaluation.copyPenalties,
     answers: evaluation.answersSnapshot,
     royalHozuki: false,
     secretRank: "",
@@ -602,6 +618,7 @@ export default function TestQIShinobi() {
   const [expandedRow, setExpandedRow] = useState(null);
   const [syncMode, setSyncMode] = useState("loading");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [copyPenaltyCount, setCopyPenaltyCount] = useState(0);
   const sessionStats = getQuestionStats(sessionQuestions);
 
   async function refreshLeaderboard() {
@@ -651,6 +668,7 @@ export default function TestQIShinobi() {
     const applyCopyPenalty = () => {
       setStartTime((currentStartTime) => currentStartTime - COPY_PENALTY_SECONDS * 1000);
       setElapsed((currentElapsed) => currentElapsed + COPY_PENALTY_SECONDS);
+      setCopyPenaltyCount((currentCount) => currentCount + 1);
     };
 
     document.addEventListener("copy", applyCopyPenalty);
@@ -671,6 +689,7 @@ export default function TestQIShinobi() {
     setStartTime(Date.now());
     setEndTime(0);
     setElapsed(0);
+    setCopyPenaltyCount(0);
     setScreen("test");
   };
 
@@ -694,7 +713,13 @@ export default function TestQIShinobi() {
 
     try {
       const totalSec = Math.round((finalEnd - startTime) / 1000);
-      const outcome = resolveAttemptOutcome(name, answers, totalSec, sessionQuestions);
+      const outcome = resolveAttemptOutcome(
+        name,
+        answers,
+        totalSec,
+        sessionQuestions,
+        copyPenaltyCount
+      );
       const entryId = Date.now() + "_" + Math.random().toString(36).slice(2, 8);
       const entry = {
         id: entryId,
@@ -707,6 +732,7 @@ export default function TestQIShinobi() {
         normalCorrectAnswers: outcome.normalCorrectAnswers,
         time: totalSec,
         bonus: outcome.bonus,
+        copyPenalties: outcome.copyPenalties,
         royalHozuki: outcome.royalHozuki,
         secretRank: outcome.secretRank,
         questionIds: outcome.questionIds,
@@ -731,6 +757,7 @@ export default function TestQIShinobi() {
     setIdx(0);
     setName("");
     setCurrentEntryId(null);
+    setCopyPenaltyCount(0);
     refreshLeaderboard();
   };
 
@@ -810,9 +837,11 @@ export default function TestQIShinobi() {
   const totalSec = Math.round((endTime - startTime) / 1000);
   const resultOutcome =
     screen === "results"
-      ? resolveAttemptOutcome(name, answers, totalSec, sessionQuestions)
+      ? resolveAttemptOutcome(name, answers, totalSec, sessionQuestions, copyPenaltyCount)
       : null;
-  const currentEvaluation = resultOutcome || evaluateAnswers(answers, sessionQuestions);
+  const currentEvaluation =
+    resultOutcome ||
+    applyAttemptPenalties(evaluateAnswers(answers, sessionQuestions), copyPenaltyCount);
   const normalScore = currentEvaluation.normalScore;
   const bonusEarned = currentEvaluation.bonusEarned ?? currentEvaluation.bonus;
   const totalScore = currentEvaluation.score ?? currentEvaluation.totalScore;
