@@ -7,6 +7,7 @@ const SECRET_HOZUKI_PROFILES = [
     key: "princess",
     label: "Princesse du clan Hozuki",
     shortLabel: "Princesse",
+    scoreBonus: 0,
     aliases: [
       "mizuhimehozuki",
       "mizuhimehouzuki",
@@ -18,9 +19,20 @@ const SECRET_HOZUKI_PROFILES = [
     key: "godfather",
     label: "Le Parrain",
     shortLabel: "Parrain",
+    scoreBonus: 0,
     aliases: [
       "onigetsuhozuki",
       "onigetsuhouzuki",
+    ],
+  },
+  {
+    key: "mizukage",
+    label: "Mizukage",
+    shortLabel: "Mizukage",
+    scoreBonus: 10,
+    aliases: [
+      "zangetsuhozuki",
+      "zangetsuhouzuki",
     ],
   },
 ];
@@ -150,12 +162,13 @@ export function buildSecretHozukiOverride({ name, normalMax, totalMax, questionM
   }
 
   const normalizedQuestions = Array.isArray(questionMeta) ? questionMeta : [];
+  const scoreBonus = Math.max(0, Number.parseInt(profile.scoreBonus, 10) || 0);
 
   return {
     qi: SECRET_HOZUKI_QI,
     rank: profile.label,
     secretRank: profile.key,
-    score: totalMax,
+    score: totalMax + scoreBonus,
     normalScore: normalMax,
     correctAnswers: normalizedQuestions.length,
     normalCorrectAnswers: normalizedQuestions.filter((question) => !question.impossible).length,

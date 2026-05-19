@@ -343,6 +343,16 @@ const SECRET_HOZUKI_RANKS = {
     flavor: "« Même la Brume baisse les yeux quand tu entres dans la pièce. »",
     banner: "🩸 La Brume s'incline devant Le Parrain. Ton verdict atteint automatiquement le maximum absolu, sans dépendre du temps ni des réponses.",
   },
+  mizukage: {
+    label: "Mizukage",
+    shortLabel: "Mizukage",
+    color: "#9FD8FF",
+    bg: "linear-gradient(135deg, rgba(95,168,212,0.18), rgba(240,208,96,0.12))",
+    border: "#9FD8FF",
+    desc: "Mizukage",
+    flavor: "La Brume reconnait en toi l'autorite supreme des eaux.",
+    banner: "La Brume te reconnait comme Mizukage. Ton verdict atteint automatiquement le maximum absolu, avec 10 points supplementaires accordes d'office.",
+  },
 };
 
 const LEGACY_QUESTIONS = getLegacyQuestions();
