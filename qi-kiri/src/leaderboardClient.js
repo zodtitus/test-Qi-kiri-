@@ -1,4 +1,7 @@
-import { isSecretHozukiRankLabel } from "../lib/secretRank.js";
+import {
+  getSecretHozukiProfileByKey,
+  getSecretHozukiProfileByLabel,
+} from "../lib/secretRank.js";
 
 const LOCAL_LEADERBOARD_KEY = "kiri-qi-leaderboard";
 const MAX_ENTRIES = 100;
@@ -26,6 +29,10 @@ function sortEntries(entries) {
 }
 
 function normalizeEntry(rawEntry) {
+  const secretProfile =
+    getSecretHozukiProfileByKey(rawEntry?.secretRank) ||
+    getSecretHozukiProfileByLabel(rawEntry?.rank);
+
   return {
     id: String(rawEntry?.id || ""),
     name: String(rawEntry?.name || "Shinobi inconnu"),
@@ -37,7 +44,8 @@ function normalizeEntry(rawEntry) {
     normalCorrectAnswers: Number.parseInt(rawEntry?.normalCorrectAnswers, 10) || 0,
     time: Number.parseInt(rawEntry?.time, 10) || 0,
     bonus: Boolean(rawEntry?.bonus),
-    royalHozuki: Boolean(rawEntry?.royalHozuki) || isSecretHozukiRankLabel(rawEntry?.rank),
+    royalHozuki: Boolean(rawEntry?.royalHozuki) || Boolean(secretProfile),
+    secretRank: String(rawEntry?.secretRank || secretProfile?.key || ""),
     date: typeof rawEntry?.date === "string" ? rawEntry.date : new Date().toISOString(),
     answers: Array.isArray(rawEntry?.answers) ? rawEntry.answers : [],
   };

@@ -1,6 +1,8 @@
 import { Redis } from "@upstash/redis";
 import {
   buildSecretHozukiOverride,
+  getSecretHozukiProfileByKey,
+  getSecretHozukiProfileByLabel,
   isSecretHozukiRankLabel,
 } from "../lib/secretRank.js";
 
@@ -171,6 +173,9 @@ function computeQI(score, elapsedSec, bonusEarned) {
 
 function sanitizeEntry(rawEntry) {
   const safeDate = typeof rawEntry?.date === "string" ? rawEntry.date : new Date().toISOString();
+  const secretProfile =
+    getSecretHozukiProfileByKey(rawEntry?.secretRank) ||
+    getSecretHozukiProfileByLabel(rawEntry?.rank);
 
   return {
     id: String(rawEntry?.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
@@ -183,7 +188,8 @@ function sanitizeEntry(rawEntry) {
     normalCorrectAnswers: Number.parseInt(rawEntry?.normalCorrectAnswers, 10) || 0,
     time: Number.parseInt(rawEntry?.time, 10) || 0,
     bonus: Boolean(rawEntry?.bonus),
-    royalHozuki: Boolean(rawEntry?.royalHozuki) || isSecretHozukiRankLabel(rawEntry?.rank),
+    royalHozuki: Boolean(rawEntry?.royalHozuki) || Boolean(secretProfile),
+    secretRank: String(rawEntry?.secretRank || secretProfile?.key || ""),
     date: safeDate,
     answers: sanitizeAnswers(rawEntry?.answers),
   };
@@ -211,6 +217,15 @@ function migrateEntry(rawEntry) {
   }
 
   if (!Array.isArray(entry.answers) || entry.answers.length === 0) {
+    if (entry.royalHozuki || entry.secretRank || isSecretHozukiRankLabel(entry.rank)) {
+      return {
+        ...entry,
+        royalHozuki: false,
+        secretRank: "",
+        rank: getRankLabel(entry.qi),
+      };
+    }
+
     return entry;
   }
 
@@ -227,6 +242,7 @@ function migrateEntry(rawEntry) {
     normalCorrectAnswers: evaluation.normalCorrectAnswers,
     bonus: evaluation.bonusEarned,
     royalHozuki: false,
+    secretRank: "",
     answers: evaluation.answersSnapshot,
   };
 }

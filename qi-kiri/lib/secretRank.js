@@ -1,11 +1,27 @@
-export const SECRET_HOZUKI_RANK_LABEL = "Princesse du clan Hozuki";
 export const SECRET_HOZUKI_QI = 180;
-
-const SECRET_HOZUKI_ALIASES = [
-  "mizuhimehozuki",
-  "mizuhimehouzuki",
-];
 const MAX_SECRET_NAME_DISTANCE = 2;
+const SECRET_HOZUKI_PROFILES = [
+  {
+    key: "princess",
+    label: "Princesse du clan Hozuki",
+    shortLabel: "Princesse",
+    aliases: [
+      "mizuhimehozuki",
+      "mizuhimehouzuki",
+      "umihimehozuki",
+      "umihimehouzuki",
+    ],
+  },
+  {
+    key: "godfather",
+    label: "Le Parain",
+    shortLabel: "Parain",
+    aliases: [
+      "onigetsuhozuki",
+      "onigetsuhouzuki",
+    ],
+  },
+];
 
 function normalizeSecretName(value) {
   return String(value || "")
@@ -55,23 +71,45 @@ function hasEditDistanceWithin(source, target, maxDistance) {
 }
 
 export function isSecretHozukiName(value) {
+  return Boolean(getSecretHozukiProfileByName(value));
+}
+
+export function getSecretHozukiProfileByName(value) {
   const normalized = normalizeSecretName(value);
 
   if (!normalized) {
-    return false;
+    return null;
   }
 
-  return SECRET_HOZUKI_ALIASES.some((alias) =>
-    hasEditDistanceWithin(normalized, alias, MAX_SECRET_NAME_DISTANCE)
+  return SECRET_HOZUKI_PROFILES.find((profile) =>
+    profile.aliases.some((alias) =>
+      hasEditDistanceWithin(normalized, alias, MAX_SECRET_NAME_DISTANCE)
+    )
   );
 }
 
 export function isSecretHozukiRankLabel(value) {
-  return String(value || "").trim().toLowerCase() === SECRET_HOZUKI_RANK_LABEL.toLowerCase();
+  return Boolean(getSecretHozukiProfileByLabel(value));
+}
+
+export function getSecretHozukiProfileByLabel(value) {
+  const normalizedLabel = String(value || "").trim().toLowerCase();
+  return SECRET_HOZUKI_PROFILES.find(
+    (profile) => profile.label.toLowerCase() === normalizedLabel
+  ) || null;
+}
+
+export function getSecretHozukiProfileByKey(value) {
+  const normalizedKey = String(value || "").trim().toLowerCase();
+  return SECRET_HOZUKI_PROFILES.find(
+    (profile) => profile.key.toLowerCase() === normalizedKey
+  ) || null;
 }
 
 export function buildSecretHozukiOverride({ name, normalMax, totalMax, questionMeta }) {
-  if (!isSecretHozukiName(name)) {
+  const profile = getSecretHozukiProfileByName(name);
+
+  if (!profile) {
     return null;
   }
 
@@ -79,7 +117,8 @@ export function buildSecretHozukiOverride({ name, normalMax, totalMax, questionM
 
   return {
     qi: SECRET_HOZUKI_QI,
-    rank: SECRET_HOZUKI_RANK_LABEL,
+    rank: profile.label,
+    secretRank: profile.key,
     score: totalMax,
     normalScore: normalMax,
     correctAnswers: normalizedQuestions.length,
