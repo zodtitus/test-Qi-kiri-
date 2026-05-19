@@ -423,7 +423,7 @@ function renderSecretRoleMark(secretRank, rankLabel) {
     justifyContent: "center",
     width: 15,
     height: 15,
-    marginLeft: 5,
+    marginLeft: 0,
     opacity: 0.8,
     verticalAlign: "middle",
     filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.28))",
@@ -473,6 +473,100 @@ function renderSecretRoleMark(secretRank, rankLabel) {
   }
 
   return null;
+}
+
+function normalizeClanBadgeName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+}
+
+function hasHozukiClanMark(value) {
+  const normalized = normalizeClanBadgeName(value);
+  return normalized.includes("hozuki") || normalized.includes("houzuki");
+}
+
+function hasHoshigakiClanMark(value) {
+  const normalized = normalizeClanBadgeName(value);
+  return normalized.includes("hoshigaki");
+}
+
+function renderClanMark(kind) {
+  const iconStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 14,
+    height: 14,
+    opacity: 0.72,
+    verticalAlign: "middle",
+    filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.24))",
+    transform: "translateY(1px)",
+  };
+
+  if (kind === "hoshigaki") {
+    return (
+      <span key="hoshigaki" style={iconStyle} title="Hoshigaki" aria-hidden="true">
+        <svg viewBox="0 0 20 20" width="14" height="14">
+          <circle cx="10" cy="10" r="8.2" fill="#D8E0EA" opacity="0.16" />
+          <circle cx="10" cy="10" r="7.5" fill="none" stroke="#DCE4EC" strokeWidth="1.15" />
+          <path d="M5.1 13.6c.6-4.4 2.1-6.9 4.8-9 2.3.3 4.1 1.8 5.2 4.6.5 1.2.8 2.7.8 4.2-1.8.8-7.7 1-10.8.2Z" fill="#DCE4EC" />
+        </svg>
+      </span>
+    );
+  }
+
+  if (kind === "hozuki") {
+    return (
+      <span key="hozuki" style={iconStyle} title="Hozuki" aria-hidden="true">
+        <svg viewBox="0 0 20 20" width="14" height="14">
+          <ellipse cx="10" cy="10" rx="7.1" ry="8" fill="none" stroke="#E7ECF4" strokeWidth="1.05" />
+          <ellipse cx="10" cy="10" rx="4.2" ry="8" fill="none" stroke="#E7ECF4" strokeWidth="1.05" />
+          <path d="M10 2v16" stroke="#E7ECF4" strokeWidth="1.15" />
+          <circle cx="10" cy="10" r="3.1" fill="#E7ECF4" />
+        </svg>
+      </span>
+    );
+  }
+
+  return null;
+}
+
+function renderNameMarks(name, secretRank, rankLabel) {
+  const marks = [];
+
+  if (hasHoshigakiClanMark(name)) {
+    marks.push(renderClanMark("hoshigaki"));
+  }
+
+  if (hasHozukiClanMark(name)) {
+    marks.push(renderClanMark("hozuki"));
+  }
+
+  const secretMark = renderSecretRoleMark(secretRank, rankLabel);
+  if (secretMark) {
+    marks.push(<span key="secret-role" style={{ display: "inline-flex" }}>{secretMark}</span>);
+  }
+
+  if (!marks.length) {
+    return null;
+  }
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        marginLeft: 6,
+        flexShrink: 0,
+      }}
+    >
+      {marks}
+    </span>
+  );
 }
 
 function getRankVisual(rankLabel, royalHozuki = false, secretRank = "") {
@@ -1281,7 +1375,7 @@ export default function TestQIShinobi() {
                           <span style={{ flex: 1, color: "#E8D8B8", fontWeight: 500 }}>
                             <span style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap" }}>
                               <span>{e.name}</span>
-                              {e.royalHozuki && secretVisual && renderSecretRoleMark(e.secretRank, e.rank)}
+                              {renderNameMarks(e.name, e.secretRank, e.rank)}
                             </span>
                             {e.royalHozuki && secretVisual && (
                               <span style={{ display: "block", fontSize: 11, color: "#F8E6A0", marginTop: 2 }}>
@@ -1677,7 +1771,7 @@ function LeaderboardTable({ entries, highlightId }) {
                   <span style={{ color: isMe ? "#7FD4C0" : "#E8D8B8", fontWeight: isMe ? 600 : 400 }}>
                     <span style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap" }}>
                       <span>{e.name}</span>
-                      {e.royalHozuki && secretVisual && renderSecretRoleMark(e.secretRank, e.rank)}
+                      {renderNameMarks(e.name, e.secretRank, e.rank)}
                     </span>
                     {isMe && <span style={{ marginLeft: 6, fontSize: 10, color: "#7FD4C0" }}>← toi</span>}
                     {e.bonus && <span style={{ marginLeft: 6, fontSize: 11, color: "#F0D060" }}>⚜</span>}
