@@ -1294,6 +1294,10 @@ export default function TestQIShinobi() {
                               : styles.choiceWaveGlowNormal),
                           }}
                         />
+                        <span style={styles.choiceBeam}>
+                          <span style={styles.choiceBeamTrail} />
+                          <span style={styles.choiceBeamCore} />
+                        </span>
                       </span>
                     )}
                     <span style={styles.choiceContent}>
@@ -1568,6 +1572,20 @@ const globalCSS = `
     50% { opacity: 0.38; transform: translate3d(3%, -4%, 0) scaleX(1.05); }
     100% { opacity: 0.2; transform: translate3d(-3%, 0, 0) scaleX(1); }
   }
+  @keyframes qiBeamRotate {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+  }
+  @keyframes qiBeamPulse {
+    0% { opacity: 0.24; filter: blur(14px); }
+    50% { opacity: 0.38; filter: blur(11px); }
+    100% { opacity: 0.24; filter: blur(14px); }
+  }
+  @keyframes qiBeamCorePulse {
+    0% { opacity: 0.34; filter: blur(6px); }
+    50% { opacity: 0.56; filter: blur(4px); }
+    100% { opacity: 0.34; filter: blur(6px); }
+  }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: rgba(232,216,184,0.05); }
   ::-webkit-scrollbar-thumb { background: rgba(127,212,192,0.2); border-radius: 4px; }
@@ -1824,6 +1842,46 @@ const styles = {
   choiceWaveGlowImpossible: {
     background:
       "radial-gradient(circle at 18% 78%, rgba(240,208,96,0.18), transparent 34%), radial-gradient(circle at 78% 26%, rgba(255,242,204,0.14), transparent 32%)",
+  },
+  choiceBeam: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: "165%",
+    height: "260%",
+    transform: "translate(-50%, -50%)",
+    transformOrigin: "50% 50%",
+    pointerEvents: "none",
+    animation: "qiBeamRotate 15s linear infinite",
+    mixBlendMode: "screen",
+  },
+  choiceBeamTrail: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: "24%",
+    height: "145%",
+    transform: "translate(-50%, -50%)",
+    borderRadius: "999px",
+    background:
+      "linear-gradient(180deg, rgba(180,240,255,0) 0%, rgba(180,240,255,0.18) 20%, rgba(180,240,255,0.32) 48%, rgba(180,240,255,0.16) 72%, rgba(180,240,255,0) 100%)",
+    opacity: 0.3,
+    filter: "blur(14px)",
+    animation: "qiBeamPulse 4.8s ease-in-out infinite",
+  },
+  choiceBeamCore: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: "10%",
+    height: "118%",
+    transform: "translate(-50%, -50%)",
+    borderRadius: "999px",
+    background:
+      "linear-gradient(180deg, rgba(205,247,255,0) 0%, rgba(205,247,255,0.3) 18%, rgba(205,247,255,0.7) 50%, rgba(205,247,255,0.28) 80%, rgba(205,247,255,0) 100%)",
+    opacity: 0.46,
+    filter: "blur(6px)",
+    animation: "qiBeamCorePulse 3.9s ease-in-out infinite",
   },
   nav: { display: "flex", justifyContent: "space-between", gap: 12, marginTop: 20 },
   lbTable: {
