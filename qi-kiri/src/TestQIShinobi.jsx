@@ -326,14 +326,14 @@ const SECRET_HOZUKI_RANKS = {
     banner: "👑 Les eaux reconnaissent la Princesse du clan Hozuki. Ton verdict atteint automatiquement le maximum absolu, sans dépendre du temps ni des réponses.",
   },
   godfather: {
-    label: "Le Parain",
-    shortLabel: "Parain",
+    label: "Le Parrain",
+    shortLabel: "Parrain",
     color: "#F0D060",
     bg: "linear-gradient(135deg, rgba(240,208,96,0.16), rgba(224,96,112,0.14))",
     border: "#F0D060",
-    desc: "Le Parain",
+    desc: "Le Parrain",
     flavor: "« Même la Brume baisse les yeux quand tu entres dans la pièce. »",
-    banner: "🩸 La Brume s'incline devant Le Parain. Ton verdict atteint automatiquement le maximum absolu, sans dépendre du temps ni des réponses.",
+    banner: "🩸 La Brume s'incline devant Le Parrain. Ton verdict atteint automatiquement le maximum absolu, sans dépendre du temps ni des réponses.",
   },
 };
 
@@ -1667,3 +1667,4 @@ const styles = {
     borderBottom: "1px solid rgba(232,216,184,0.05)",
   },
 };
+

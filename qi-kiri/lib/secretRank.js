@@ -15,8 +15,8 @@ const SECRET_HOZUKI_PROFILES = [
   },
   {
     key: "godfather",
-    label: "Le Parain",
-    shortLabel: "Parain",
+    label: "Le Parrain",
+    shortLabel: "Parrain",
     aliases: [
       "onigetsuhozuki",
       "onigetsuhouzuki",
@@ -139,3 +139,4 @@ export function buildSecretHozukiOverride({ name, normalMax, totalMax, questionM
     royalHozuki: true,
   };
 }
+
