@@ -339,6 +339,13 @@ const LEGACY_QUESTIONS = getLegacyQuestions();
 const DIFF_COLORS = ["", "#7FD4C0", "#C8A04A", "#D88A60", "#E06070", "#F0D060"];
 const DIFF_LABELS = ["", "Facile", "Moyen", "Difficile", "Expert", "Impossible"];
 
+function sanitizeVisibleChoiceLabel(value) {
+  return displayChoiceLabel(value)
+    .replace(/[\u2713\u2705]/g, "")
+    .replace(/[âœ…âœ“]/g, "")
+    .trim();
+}
+
 function getRank(qi) {
   return RANKS.find((r) => qi >= r.min) || RANKS[RANKS.length - 1];
 }
@@ -348,6 +355,12 @@ function displayChoiceLabel(value) {
 }
 
 function getSecretRankVisual(secretRank, rankLabel) {
+  function sanitizeVisibleChoiceLabel(value) {
+    return displayChoiceLabel(value)
+      .replace(/[âœ…âœ“✅✓]/g, "")
+      .trim();
+  }
+
   const secretProfile =
     getSecretHozukiProfileByKey(secretRank) ||
     getSecretHozukiProfileByLabel(rankLabel);
@@ -1075,11 +1088,11 @@ export default function TestQIShinobi() {
                                       </div>
                                       <div style={{ fontSize: 11 }}>
                                         <span style={{ color: ok ? "#7FD4C0" : "#E06070" }}>
-                                          Réponse : {userAnswer >= 0 ? displayChoiceLabel(q.choices[userAnswer]) : "—"}
+                                          Réponse : {userAnswer >= 0 ? sanitizeVisibleChoiceLabel(q.choices[userAnswer]) : "—"}
                                         </span>
                                         {!ok && (
                                           <span style={{ color: "#7FD4C0", marginLeft: 12 }}>
-                                            ↳ Correcte : {displayChoiceLabel(q.choices[q.answer])}
+                                            ↳ Correcte : {sanitizeVisibleChoiceLabel(q.choices[q.answer])}
                                           </span>
                                         )}
                                       </div>
@@ -1172,7 +1185,7 @@ export default function TestQIShinobi() {
                     <span style={{ ...styles.choiceLetter, color: isImpossible ? "#F0D060" : "#7FD4C0" }}>
                       {["A", "B", "C", "D"][i]}
                     </span>
-                    <span>{displayChoiceLabel(c)}</span>
+                    <span>{sanitizeVisibleChoiceLabel(c)}</span>
                   </button>
                 );
               })}
