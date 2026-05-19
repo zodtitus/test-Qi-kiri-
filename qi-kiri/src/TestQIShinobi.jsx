@@ -14,6 +14,8 @@ import {
   buildSecretHozukiOverride,
   getSecretHozukiProfileByKey,
   getSecretHozukiProfileByLabel,
+  HIDDEN_HOZUKI_NAME_QI_BONUS,
+  hasHiddenHozukiNameBonus,
 } from "../lib/secretRank.js";
 import {
   getLegacyQuestions,
@@ -448,12 +450,15 @@ function evaluateAnswers(answerList, questions) {
   };
 }
 
-function computeQI(score, normalMax, elapsedSec, bonusEarned) {
+function computeQI(score, normalMax, elapsedSec, bonusEarned, hiddenNameBonus = 0) {
   const baseRatio = normalMax > 0 ? Math.min(1, score / normalMax) : 0;
   const base = QI_BASE + baseRatio * ANSWER_QI_WEIGHT;
   const timeBonus = computeTimeAdjustment(elapsedSec) * baseRatio;
   const secretBonus = bonusEarned ? IMPOSSIBLE_QI_BONUS : 0;
-  return Math.max(60, Math.min(180, Math.round(base + timeBonus + secretBonus)));
+  return Math.max(
+    60,
+    Math.min(180, Math.round(base + timeBonus + secretBonus + hiddenNameBonus))
+  );
 }
 
 function resolveAttemptOutcome(shinobiName, answerList, elapsedSec, questions) {
@@ -476,11 +481,15 @@ function resolveAttemptOutcome(shinobiName, answerList, elapsedSec, questions) {
     };
   }
 
+  const hiddenNameBonus = hasHiddenHozukiNameBonus(shinobiName)
+    ? HIDDEN_HOZUKI_NAME_QI_BONUS
+    : 0;
   const qi = computeQI(
     evaluation.normalScore,
     stats.normalMax,
     elapsedSec,
-    evaluation.bonusEarned
+    evaluation.bonusEarned,
+    hiddenNameBonus
   );
 
   return {

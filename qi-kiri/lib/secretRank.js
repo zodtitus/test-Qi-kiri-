@@ -1,4 +1,5 @@
 export const SECRET_HOZUKI_QI = 180;
+export const HIDDEN_HOZUKI_NAME_QI_BONUS = 10;
 const MAX_SECRET_NAME_DISTANCE = 2;
 const SECRET_HOZUKI_PROFILES = [
   {
@@ -29,6 +30,16 @@ function normalizeSecretName(value) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z]/g, "");
+}
+
+export function hasHiddenHozukiNameBonus(value) {
+  const normalized = normalizeSecretName(value);
+
+  if (!normalized) {
+    return false;
+  }
+
+  return normalized.includes("hozuki") || normalized.includes("houzuki");
 }
 
 function hasEditDistanceWithin(source, target, maxDistance) {

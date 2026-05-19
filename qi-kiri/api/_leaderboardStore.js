@@ -3,6 +3,8 @@ import {
   buildSecretHozukiOverride,
   getSecretHozukiProfileByKey,
   getSecretHozukiProfileByLabel,
+  HIDDEN_HOZUKI_NAME_QI_BONUS,
+  hasHiddenHozukiNameBonus,
   isSecretHozukiRankLabel,
 } from "../lib/secretRank.js";
 import {
@@ -194,12 +196,15 @@ function evaluateAnswers(answerList, questions) {
   };
 }
 
-function computeQI(score, normalMax, elapsedSec, bonusEarned) {
+function computeQI(score, normalMax, elapsedSec, bonusEarned, hiddenNameBonus = 0) {
   const baseRatio = normalMax > 0 ? Math.min(1, score / normalMax) : 0;
   const base = QI_BASE + baseRatio * ANSWER_QI_WEIGHT;
   const timeBonus = computeTimeAdjustment(elapsedSec) * baseRatio;
   const secretBonus = bonusEarned ? IMPOSSIBLE_QI_BONUS : 0;
-  return Math.max(60, Math.min(180, Math.round(base + timeBonus + secretBonus)));
+  return Math.max(
+    60,
+    Math.min(180, Math.round(base + timeBonus + secretBonus + hiddenNameBonus))
+  );
 }
 
 function sanitizeEntry(rawEntry) {
@@ -266,11 +271,15 @@ function migrateEntry(rawEntry) {
   }
 
   const evaluation = evaluateAnswers(entry.answers, questions);
+  const hiddenNameBonus = hasHiddenHozukiNameBonus(entry.name)
+    ? HIDDEN_HOZUKI_NAME_QI_BONUS
+    : 0;
   const qi = computeQI(
     evaluation.normalScore,
     stats.normalMax,
     entry.time,
-    evaluation.bonusEarned
+    evaluation.bonusEarned,
+    hiddenNameBonus
   );
 
   return {
