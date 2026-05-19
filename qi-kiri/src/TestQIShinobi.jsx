@@ -278,13 +278,15 @@ const TOTAL_MAX = QUESTIONS.reduce((s, q) => s + q.pts, 0);
 const IMPOSSIBLE_INDEX = QUESTIONS.findIndex((q) => q.impossible);
 const IMPOSSIBLE_QUESTION = IMPOSSIBLE_INDEX >= 0 ? QUESTIONS[IMPOSSIBLE_INDEX] : null;
 const IMPOSSIBLE_QI_BONUS = 10;
-const TIME_BONUS_MAX = 25;
+const QI_BASE = 60;
+const ANSWER_QI_WEIGHT = 90;
+const TIME_BONUS_MAX = 20;
 const TIME_ELITE_SEC = 3 * 60;
 const TIME_TARGET_SEC = 4 * 60;
 const TIME_CAP_100_SEC = 10 * 60;
 const TIME_FLOOR_SEC = 15 * 60;
 const TIME_PENALTY_AT_10_MIN = -55;
-const TIME_PENALTY_MIN = -65;
+const TIME_PENALTY_MIN = -70;
 
 const RANKS = [
   { label: "X", min: 145, color: "#F0D060", bg: "rgba(240,208,96,0.12)", border: "#F0D060", desc: "Conscience au-delà du classement", flavor: "« La Brume t'a reconnu comme l'une des siennes. »" },
@@ -369,7 +371,7 @@ function evaluateAnswers(answerList) {
 
 function computeQI(score, elapsedSec, bonusEarned) {
   const baseRatio = Math.min(1, score / NORMAL_MAX);
-  const base = 70 + baseRatio * 75;
+  const base = QI_BASE + baseRatio * ANSWER_QI_WEIGHT;
   const timeBonus = computeTimeAdjustment(elapsedSec);
   const secretBonus = bonusEarned ? IMPOSSIBLE_QI_BONUS : 0;
   return Math.max(60, Math.min(180, Math.round(base + timeBonus + secretBonus)));
