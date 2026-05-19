@@ -306,6 +306,10 @@ const RUSH_PENALTY_WINDOW_SEC = 5 * 60;
 const RUSH_SAFE_ACCURACY_RATIO = 0.78;
 const RUSH_LOW_ACCURACY_RATIO = 0.35;
 const RUSH_MAX_POINT_NERF_RATIO = 0.55;
+const EASY_QUESTION_MAX_DIFF = 2;
+const EASY_MISTAKE_PENALTY_WINDOW_SEC = 5 * 60;
+const EASY_MISTAKE_POINT_WEIGHT = 0.45;
+const EASY_MISTAKE_COUNT_WEIGHT = 0.75;
 const SCREENSHOT_SHORTCUT_KEYS = new Set(["3", "4", "5", "s"]);
 
 const RANKS = [
@@ -455,9 +459,19 @@ function evaluateAnswers(answerList, questions) {
   let totalScore = 0;
   let correctAnswers = 0;
   let normalCorrectAnswers = 0;
+  let easyMistakeCount = 0;
+  let easyMistakePoints = 0;
 
   normalizedQuestions.forEach((question, index) => {
     if (answersSnapshot[index] !== question.answer) {
+      if (
+        !question.impossible &&
+        Number.isFinite(question.diff) &&
+        question.diff <= EASY_QUESTION_MAX_DIFF
+      ) {
+        easyMistakeCount += 1;
+        easyMistakePoints += question.pts;
+      }
       return;
     }
 
@@ -480,6 +494,8 @@ function evaluateAnswers(answerList, questions) {
     totalScore,
     correctAnswers,
     normalCorrectAnswers,
+    easyMistakeCount,
+    easyMistakePoints,
     bonusEarned,
   };
 }
@@ -515,6 +531,26 @@ function computeRushPenalty(score, elapsedSec, maxScore) {
   return Math.min(score, Math.round(score * penaltyRatio));
 }
 
+function computeEasyMistakePenalty(easyMistakePoints, easyMistakeCount, elapsedSec) {
+  if (easyMistakeCount <= 0 || easyMistakePoints <= 0) {
+    return 0;
+  }
+
+  const safeElapsedSec = Math.max(0, Number.parseInt(elapsedSec, 10) || 0);
+
+  if (safeElapsedSec >= EASY_MISTAKE_PENALTY_WINDOW_SEC) {
+    return 0;
+  }
+
+  const speedPressure =
+    (EASY_MISTAKE_PENALTY_WINDOW_SEC - safeElapsedSec) / EASY_MISTAKE_PENALTY_WINDOW_SEC;
+  const penaltyBase =
+    easyMistakePoints * EASY_MISTAKE_POINT_WEIGHT +
+    easyMistakeCount * EASY_MISTAKE_COUNT_WEIGHT;
+
+  return Math.max(0, Math.round(penaltyBase * speedPressure));
+}
+
 function applyAttemptPenalties(
   evaluation,
   { copyPenaltyCount = 0, elapsedSec = 0, normalMax = 0, totalMax = 0 } = {}
@@ -538,13 +574,19 @@ function applyAttemptPenalties(
     elapsedSec,
     totalMax
   );
+  const easyMistakePenalty = computeEasyMistakePenalty(
+    evaluation.easyMistakePoints,
+    evaluation.easyMistakeCount,
+    elapsedSec
+  );
 
   return {
     ...evaluation,
     copyPenalties: safePenaltyCount,
     rushPenalty,
-    normalScore: Math.max(0, normalScoreAfterCopyPenalty - rushPenalty),
-    totalScore: Math.max(0, scoreAfterCopyPenalty - totalRushPenalty),
+    easyMistakePenalty,
+    normalScore: Math.max(0, normalScoreAfterCopyPenalty - rushPenalty - easyMistakePenalty),
+    totalScore: Math.max(0, scoreAfterCopyPenalty - totalRushPenalty - easyMistakePenalty),
   };
 }
 
