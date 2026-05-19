@@ -159,7 +159,7 @@ function evaluateAnswers(answerList) {
 function computeQI(score, elapsedSec, bonusEarned) {
   const baseRatio = Math.min(1, score / NORMAL_MAX);
   const base = QI_BASE + baseRatio * ANSWER_QI_WEIGHT;
-  const timeBonus = computeTimeAdjustment(elapsedSec);
+  const timeBonus = computeTimeAdjustment(elapsedSec) * baseRatio;
   const secretBonus = bonusEarned ? IMPOSSIBLE_QI_BONUS : 0;
   return Math.max(60, Math.min(180, Math.round(base + timeBonus + secretBonus)));
 }
