@@ -1252,10 +1252,56 @@ export default function TestQIShinobi() {
                     onMouseEnter={(e) => !selected && (e.currentTarget.style.borderColor = "rgba(232,216,184,0.4)")}
                     onMouseLeave={(e) => !selected && (e.currentTarget.style.borderColor = "rgba(232,216,184,0.15)")}
                   >
-                    <span style={{ ...styles.choiceLetter, color: isImpossible ? "#F0D060" : "#7FD4C0" }}>
-                      {["A", "B", "C", "D"][i]}
+                    {selected && (
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          ...styles.choiceWave,
+                          ...(isImpossible ? styles.choiceWaveImpossible : styles.choiceWaveNormal),
+                        }}
+                      >
+                        <span
+                          style={{
+                            ...styles.choiceWaveBase,
+                            ...(isImpossible
+                              ? styles.choiceWaveBaseImpossible
+                              : styles.choiceWaveBaseNormal),
+                          }}
+                        />
+                        <span
+                          style={{
+                            ...styles.choiceWaveLayer,
+                            ...styles.choiceWaveLayerOne,
+                            ...(isImpossible
+                              ? styles.choiceWaveLayerOneImpossible
+                              : styles.choiceWaveLayerOneNormal),
+                          }}
+                        />
+                        <span
+                          style={{
+                            ...styles.choiceWaveLayer,
+                            ...styles.choiceWaveLayerTwo,
+                            ...(isImpossible
+                              ? styles.choiceWaveLayerTwoImpossible
+                              : styles.choiceWaveLayerTwoNormal),
+                          }}
+                        />
+                        <span
+                          style={{
+                            ...styles.choiceWaveGlow,
+                            ...(isImpossible
+                              ? styles.choiceWaveGlowImpossible
+                              : styles.choiceWaveGlowNormal),
+                          }}
+                        />
+                      </span>
+                    )}
+                    <span style={styles.choiceContent}>
+                      <span style={{ ...styles.choiceLetter, color: isImpossible ? "#F0D060" : "#7FD4C0" }}>
+                        {["A", "B", "C", "D"][i]}
+                      </span>
+                      <span style={styles.choiceLabel}>{sanitizeVisibleChoiceLabel(c)}</span>
                     </span>
-                    <span>{sanitizeVisibleChoiceLabel(c)}</span>
                   </button>
                 );
               })}
@@ -1498,6 +1544,30 @@ const globalCSS = `
     0% { opacity: 0; transform: scale(0.5); }
     100% { opacity: 1; transform: scale(1); }
   }
+  @keyframes qiWaveReveal {
+    from { opacity: 0; transform: scale(1.03) translateY(6%); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes qiWaveFloat {
+    0% { transform: translate3d(-2%, 2%, 0) scale(1.04); }
+    50% { transform: translate3d(2%, -2%, 0) scale(1.08); }
+    100% { transform: translate3d(-2%, 2%, 0) scale(1.04); }
+  }
+  @keyframes qiWaveDriftOne {
+    0% { transform: translate3d(-8%, 0, 0) scaleX(1.02); }
+    50% { transform: translate3d(3%, -2%, 0) scaleX(1.08); }
+    100% { transform: translate3d(-8%, 0, 0) scaleX(1.02); }
+  }
+  @keyframes qiWaveDriftTwo {
+    0% { transform: translate3d(5%, 0, 0) scaleX(1.08); }
+    50% { transform: translate3d(-6%, -1%, 0) scaleX(1); }
+    100% { transform: translate3d(5%, 0, 0) scaleX(1.08); }
+  }
+  @keyframes qiWaveGlow {
+    0% { opacity: 0.2; transform: translate3d(-3%, 0, 0) scaleX(1); }
+    50% { opacity: 0.38; transform: translate3d(3%, -4%, 0) scaleX(1.05); }
+    100% { opacity: 0.2; transform: translate3d(-3%, 0, 0) scaleX(1); }
+  }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: rgba(232,216,184,0.05); }
   ::-webkit-scrollbar-thumb { background: rgba(127,212,192,0.2); border-radius: 4px; }
@@ -1627,7 +1697,7 @@ const styles = {
     margin: 0, lineHeight: 1.5,
   },
   choice: {
-    display: "flex", alignItems: "flex-start", gap: 12,
+    display: "block",
     width: "100%", textAlign: "left",
     background: "rgba(255,255,255,0.02)",
     border: "1px solid rgba(232,216,184,0.15)",
@@ -1635,15 +1705,125 @@ const styles = {
     padding: "14px 18px", borderRadius: 8,
     cursor: "pointer", marginBottom: 8,
     transition: "all 0.15s", lineHeight: 1.5,
+    position: "relative", overflow: "hidden", isolation: "isolate",
   },
   choiceSelected: {
     background: "rgba(127,212,192,0.1)",
     border: "1.5px solid #7FD4C0", color: "#E8F4F0",
   },
+  choiceContent: {
+    position: "relative",
+    zIndex: 2,
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+    width: "100%",
+  },
   choiceLetter: {
     fontFamily: "'Cormorant Garamond', serif",
     fontSize: 16, fontWeight: 600,
     flexShrink: 0, minWidth: 16,
+  },
+  choiceLabel: {
+    position: "relative",
+    zIndex: 2,
+    flex: 1,
+  },
+  choiceWave: {
+    position: "absolute",
+    inset: 0,
+    overflow: "hidden",
+    borderRadius: "inherit",
+    pointerEvents: "none",
+    zIndex: 1,
+    animation: "qiWaveReveal 420ms ease-out",
+  },
+  choiceWaveNormal: {
+    opacity: 0.95,
+  },
+  choiceWaveImpossible: {
+    opacity: 0.98,
+  },
+  choiceWaveBase: {
+    position: "absolute",
+    inset: "-18% -8%",
+    filter: "blur(1.2px)",
+    animation: "qiWaveFloat 9s ease-in-out infinite",
+  },
+  choiceWaveBaseNormal: {
+    background:
+      "linear-gradient(135deg, rgba(127,212,192,0.18), rgba(95,168,212,0.08) 48%, rgba(127,212,192,0.22))",
+  },
+  choiceWaveBaseImpossible: {
+    background:
+      "linear-gradient(135deg, rgba(255,242,204,0.2), rgba(240,208,96,0.08) 48%, rgba(240,208,96,0.22))",
+  },
+  choiceWaveLayer: {
+    position: "absolute",
+    inset: "-10% -12%",
+    backgroundRepeat: "repeat-x",
+    pointerEvents: "none",
+  },
+  choiceWaveLayerOne: {
+    backgroundSize: "42% 92%, 38% 86%, 44% 90%",
+    backgroundPosition: "0% 108%, 36% 104%, 78% 106%",
+    filter: "blur(0.8px)",
+    animation: "qiWaveDriftOne 8.2s linear infinite",
+  },
+  choiceWaveLayerOneNormal: {
+    opacity: 0.5,
+    backgroundImage: `
+      radial-gradient(92% 70% at 12% 100%, rgba(232,248,252,0.22) 0, rgba(232,248,252,0.15) 20%, rgba(232,248,252,0.05) 31%, transparent 42%),
+      radial-gradient(88% 68% at 52% 100%, rgba(127,212,192,0.22) 0, rgba(127,212,192,0.12) 18%, transparent 34%),
+      radial-gradient(94% 72% at 88% 100%, rgba(208,240,246,0.18) 0, rgba(208,240,246,0.08) 19%, transparent 33%)
+    `,
+  },
+  choiceWaveLayerOneImpossible: {
+    opacity: 0.5,
+    backgroundImage: `
+      radial-gradient(92% 70% at 12% 100%, rgba(255,248,230,0.24) 0, rgba(255,248,230,0.16) 20%, rgba(255,248,230,0.05) 31%, transparent 42%),
+      radial-gradient(88% 68% at 52% 100%, rgba(240,208,96,0.24) 0, rgba(240,208,96,0.13) 18%, transparent 34%),
+      radial-gradient(94% 72% at 88% 100%, rgba(255,236,184,0.19) 0, rgba(255,236,184,0.08) 19%, transparent 33%)
+    `,
+  },
+  choiceWaveLayerTwo: {
+    inset: "-6% -14%",
+    backgroundSize: "48% 78%, 52% 76%, 45% 74%",
+    backgroundPosition: "8% 18%, 42% 12%, 85% 18%",
+    filter: "blur(1.6px)",
+    mixBlendMode: "screen",
+    animation: "qiWaveDriftTwo 10.5s linear infinite",
+  },
+  choiceWaveLayerTwoNormal: {
+    opacity: 0.35,
+    backgroundImage: `
+      radial-gradient(60% 54% at 24% 20%, rgba(255,255,255,0.22) 0, rgba(255,255,255,0.05) 34%, transparent 62%),
+      radial-gradient(64% 56% at 56% 14%, rgba(127,212,192,0.16) 0, rgba(127,212,192,0.04) 32%, transparent 60%),
+      radial-gradient(58% 52% at 82% 18%, rgba(230,244,248,0.18) 0, rgba(230,244,248,0.03) 34%, transparent 64%)
+    `,
+  },
+  choiceWaveLayerTwoImpossible: {
+    opacity: 0.38,
+    backgroundImage: `
+      radial-gradient(60% 54% at 24% 20%, rgba(255,252,240,0.22) 0, rgba(255,252,240,0.05) 34%, transparent 62%),
+      radial-gradient(64% 56% at 56% 14%, rgba(240,208,96,0.18) 0, rgba(240,208,96,0.05) 32%, transparent 60%),
+      radial-gradient(58% 52% at 82% 18%, rgba(255,238,194,0.18) 0, rgba(255,238,194,0.03) 34%, transparent 64%)
+    `,
+  },
+  choiceWaveGlow: {
+    position: "absolute",
+    inset: "-22% -14%",
+    filter: "blur(16px)",
+    mixBlendMode: "screen",
+    animation: "qiWaveGlow 6.4s ease-in-out infinite",
+  },
+  choiceWaveGlowNormal: {
+    background:
+      "radial-gradient(circle at 18% 78%, rgba(127,212,192,0.16), transparent 34%), radial-gradient(circle at 78% 26%, rgba(95,168,212,0.14), transparent 32%)",
+  },
+  choiceWaveGlowImpossible: {
+    background:
+      "radial-gradient(circle at 18% 78%, rgba(240,208,96,0.18), transparent 34%), radial-gradient(circle at 78% 26%, rgba(255,242,204,0.14), transparent 32%)",
   },
   nav: { display: "flex", justifyContent: "space-between", gap: 12, marginTop: 20 },
   lbTable: {
