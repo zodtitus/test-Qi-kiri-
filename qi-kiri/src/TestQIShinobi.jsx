@@ -1172,7 +1172,7 @@ export default function TestQIShinobi() {
           <div style={styles.crest}>水</div>
           <div style={{ flex: 1 }}>
             <div style={styles.eyebrow}>BIBLIOTHÈQUE DE LA BRUME· Tengetsu Hozuki</div>
-            <h1 style={styles.title}>L'Epreuve des lames</h1>
+            <h1 style={styles.title}>L'Epreuve de l'Excellence de la Division 1</h1>
             <div style={styles.subtitle}>« La Brume ne juge pas ce que tu sais — elle juge ce que tu comprends. »</div>
           </div>
         </div>
